@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JCM Sales Tracker</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Ccircle cx='20' cy='20' r='17' fill='none' stroke='%23241C18' stroke-width='2.5'/%3E%3Ccircle cx='20' cy='20' r='8' fill='none' stroke='%23241C18' stroke-width='2.5'/%3E%3Ccircle cx='32.5' cy='20' r='2.3' fill='%23E4622B'/%3E%3Ccircle cx='28.8' cy='28.8' r='2.3' fill='%23B0231C'/%3E%3Ccircle cx='20' cy='32.5' r='2.3' fill='%23E4622B'/%3E%3Ccircle cx='11.2' cy='28.8' r='2.3' fill='%23B0231C'/%3E%3Ccircle cx='7.5' cy='20' r='2.3' fill='%23E4622B'/%3E%3Ccircle cx='11.2' cy='11.2' r='2.3' fill='%23B0231C'/%3E%3Ccircle cx='20' cy='7.5' r='2.3' fill='%23E4622B'/%3E%3Ccircle cx='28.8' cy='11.2' r='2.3' fill='%23B0231C'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- LOGIN VIEW -->
+<div id="loginView" class="login-wrap">
+  <div class="login-mark">
+    <svg width="72" height="72" viewBox="0 0 40 40" style="opacity:0.16;">
+      <circle cx="20" cy="20" r="17" fill="none" stroke="var(--ink)" stroke-width="2"/>
+      <circle cx="20" cy="20" r="8" fill="none" stroke="var(--ink)" stroke-width="2"/>
+      <circle cx="32.5" cy="20" r="2.3" fill="var(--jcm-orange)"/>
+      <circle cx="28.8" cy="28.8" r="2.3" fill="var(--jcm-red)"/>
+      <circle cx="20" cy="32.5" r="2.3" fill="var(--jcm-orange)"/>
+      <circle cx="11.2" cy="28.8" r="2.3" fill="var(--jcm-red)"/>
+      <circle cx="7.5" cy="20" r="2.3" fill="var(--jcm-orange)"/>
+      <circle cx="11.2" cy="11.2" r="2.3" fill="var(--jcm-red)"/>
+      <circle cx="20" cy="7.5" r="2.3" fill="var(--jcm-orange)"/>
+      <circle cx="28.8" cy="11.2" r="2.3" fill="var(--jcm-red)"/>
+    </svg>
+  </div>
+  <div class="brand">JCM <span>Sales Tracker</span></div>
+  <p class="tagline">Save Production Loss</p>
+  <div class="card" style="margin-top:24px; text-align:left;">
+    <label for="pinInput">Enter PIN</label>
+    <input type="password" id="pinInput" placeholder="••••" inputmode="numeric">
+    <button class="primary" style="width:100%" onclick="login()">Log in</button>
+    <p id="loginError" class="msg error hidden">Incorrect PIN. Try again.</p>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div id="appView" class="app-shell hidden">
+  <div class="topbar">
+    <div class="brand-mark">
+      <svg width="30" height="30" viewBox="0 0 40 40">
+        <circle cx="20" cy="20" r="17" fill="none" stroke="var(--ink)" stroke-width="2.5"/>
+        <circle cx="20" cy="20" r="8" fill="none" stroke="var(--ink)" stroke-width="2.5"/>
+        <circle cx="32.5" cy="20" r="2.3" fill="var(--jcm-orange)"/>
+        <circle cx="28.8" cy="28.8" r="2.3" fill="var(--jcm-red)"/>
+        <circle cx="20" cy="32.5" r="2.3" fill="var(--jcm-orange)"/>
+        <circle cx="11.2" cy="28.8" r="2.3" fill="var(--jcm-red)"/>
+        <circle cx="7.5" cy="20" r="2.3" fill="var(--jcm-orange)"/>
+        <circle cx="11.2" cy="11.2" r="2.3" fill="var(--jcm-red)"/>
+        <circle cx="20" cy="7.5" r="2.3" fill="var(--jcm-orange)"/>
+        <circle cx="28.8" cy="11.2" r="2.3" fill="var(--jcm-red)"/>
+      </svg>
+      <div class="brand-text">
+        <div class="brand">JCM <span>Sales Tracker</span></div>
+        <div class="tagline">Save Production Loss</div>
+      </div>
+    </div>
+    <button class="secondary" onclick="logout()">Log out</button>
+  </div>
+
+  <nav class="tabs">
+    <button class="tab-btn active" data-tab="entry" onclick="showTab('entry')">Daily Entry</button>
+    <button class="tab-btn" data-tab="dashboard" onclick="showTab('dashboard')">Dashboard</button>
+    <button class="tab-btn" data-tab="invoices" onclick="showTab('invoices')">Unpaid Invoices</button>
+    <button class="tab-btn" data-tab="monthly" onclick="showTab('monthly')">Monthly Report</button>
+  </nav>
+
+  <!-- DAILY ENTRY TAB -->
+  <section id="tab-entry">
+    <div class="card">
+      <h2>Daily Sales Entry</h2>
+      <label for="entryDate">Date</label>
+      <input type="date" id="entryDate">
+
+      <h3 style="margin-top:18px;">Employee Sales &amp; Attendance</h3>
+      <div id="salespersonRows"></div>
+
+      <h3 style="margin-top:18px;">Branch Sales (₹)</h3>
+      <div id="branchRows"></div>
+
+      <div class="actions">
+        <button class="primary" onclick="saveEntry()">Save Today's Sales</button>
+      </div>
+      <p id="entryMsg" class="msg hidden" style="margin-top:14px;"></p>
+    </div>
+  </section>
+
+  <!-- DASHBOARD TAB -->
+  <section id="tab-dashboard" class="hidden">
+    <div class="card">
+      <h2>Daily Summary</h2>
+      <label for="dashDate">Select date</label>
+      <input type="date" id="dashDate" onchange="loadDashboard()">
+      <button class="secondary" onclick="loadDashboard()" style="margin-bottom:16px;">Refresh</button>
+
+      <h3>Employee-wise Sales</h3>
+      <table id="empTable"><thead><tr><th>Salesperson</th><th style="text-align:right;">Amount (₹)</th></tr></thead><tbody></tbody></table>
+
+      <h3 style="margin-top:20px;">Branch-wise Sales</h3>
+      <table id="branchTable"><thead><tr><th>Branch</th><th style="text-align:right;">Amount (₹)</th></tr></thead><tbody></tbody></table>
+    </div>
+
+    <div class="card">
+      <h2>Share with Owner</h2>
+      <p class="muted-small">This generates today's report as text. Screenshot this box, or tap the button to open WhatsApp with it pre-filled.</p>
+      <div id="waSummary" class="summary-box">Select a date above to generate the report.</div>
+      <div class="actions">
+        <button class="whatsapp" onclick="shareWhatsApp()">Share on WhatsApp</button>
+        <button class="secondary" onclick="copySummary()">Copy Text</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- INVOICES TAB -->
+  <section id="tab-invoices" class="hidden">
+    <div class="card">
+      <h2>Import from BUSY (recommended)</h2>
+      <p class="muted-small">In BUSY, run <strong>Bills Receivable</strong> (Select Salesman: ALL, Type of Entries: Pending), export to <strong>HTML</strong>, then upload that file here. Already-imported invoices are skipped automatically by invoice number, so it's safe to re-import each month at salary calc time.</p>
+      <label for="htmlFile">BUSY export file (.html)</label>
+      <input type="file" id="htmlFile" accept=".html,.htm">
+      <div class="actions">
+        <button class="primary" onclick="importHtml()">Import File</button>
+      </div>
+      <p id="importMsg" class="msg hidden" style="margin-top:14px;"></p>
+    </div>
+
+    <div class="card">
+      <h2>Add Single Invoice Manually</h2>
+      <p class="muted-small">Use this only for a one-off invoice raised outside your normal BUSY export cycle.</p>
+      <div class="row">
+        <div><label>Invoice No.</label><input type="text" id="invNo"></div>
+        <div><label>Invoice Date</label><input type="date" id="invDate"></div>
+      </div>
+      <label>Party / Customer Name</label>
+      <input type="text" id="invParty">
+      <label>Amount (₹)</label>
+      <input type="number" id="invAmount">
+      <button class="primary" onclick="addInvoice()">Add Invoice</button>
+      <p id="invMsg" class="msg hidden" style="margin-top:14px;"></p>
+    </div>
+
+    <div class="card">
+      <h2>Outstanding Invoices</h2>
+      <p class="muted-small">Auto-flags: <span class="badge ok">0-30 days</span> &nbsp;<span class="badge warn">31-60 days</span> &nbsp;<span class="badge danger">60+ days (overdue)</span></p>
+      <table id="invTable">
+        <thead><tr><th>Invoice No.</th><th>Party</th><th style="text-align:right;">Amount (₹)</th><th>Days Outstanding</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>  <!-- MONTHLY REPORT TAB -->
+  <section id="tab-monthly" class="hidden">
+    <div class="card">
+      <h2>Monthly Report — Salary Calc Ready</h2>
+      <p class="muted-small">Salaries are stored only in the "Targets" tab of your Google Sheet, never in this app's code. Fill them in there once; this report reads them live. Target = Monthly Salary × 40 (fixed, not affected by attendance). Payable Salary = Monthly Salary × (weighted present days ÷ total days marked that month), where Half Day counts as 0.5.</p>
+      <label for="monthPicker">Month</label>
+      <input type="month" id="monthPicker" onchange="loadMonthlyReport()">
+      <button class="secondary" onclick="loadMonthlyReport()" style="margin-bottom:16px;">Refresh</button>
+
+      <table id="monthlyTable">
+        <thead>
+          <tr>
+            <th>Salesperson</th>
+            <th style="text-align:right;">Monthly Salary</th>
+            <th style="text-align:right;">Target (×40)</th>
+            <th style="text-align:right;">Achieved</th>
+            <th>% of Target</th>
+            <th style="text-align:right;">Variance</th>
+            <th>Attendance (P/H/L)</th>
+            <th style="text-align:right;">Payable Salary</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+
+      <div class="actions">
+        <button class="primary" onclick="downloadMonthlyCsv()">Download CSV</button>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
