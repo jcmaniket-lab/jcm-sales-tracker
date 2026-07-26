@@ -1,0 +1,507 @@
+// ---------- CONFIG ----------
+// No PIN is stored here. It's entered at login and checked against Google's
+// Script Properties on the server (see apps-script/Code.gs). It's only kept
+// in sessionStorage for this browser tab, never in a file.
+const SALESPEOPLE = ["Hetvi", "Sakshi", "Jayu", "Ragini", "Arvind", "Himanshu", "Shoaib"];
+const BRANCHES = ["Kim GIDC", "Udhna GIDC"];
+const ATTENDANCE_STATUSES = ["Present", "Half", "Leave"];
+const OWNER_PHONE = ""; // optional: owner's WhatsApp number with country code, e.g. "919876543210". Leave blank to open the WhatsApp contact picker instead.
+
+function currentPin() {
+  return sessionStorage.getItem("jcm_pin") || "";
+}
+
+// ---------- LOGIN ----------
+async function login() {
+  const pin = document.getElementById("pinInput").value;
+  const errEl = document.getElementById("loginError");
+  errEl.classList.add("hidden");
+
+  try {
+    const result = await apiPostRaw(pin, { action: "getMeta" }, true);
+    if (result && !result.error) {
+      sessionStorage.setItem("jcm_pin", pin);
+      document.getElementById("loginView").classList.add("hidden");
+      document.getElementById("appView").classList.remove("hidden");
+      initApp();
+    } else {
+      errEl.classList.remove("hidden");
+    }
+  } catch (err) {
+    errEl.textContent = "Couldn't reach the server. Check your internet connection.";
+    errEl.classList.remove("hidden");
+  }
+}
+
+function logout() {
+  sessionStorage.removeItem("jcm_pin");
+  document.getElementById("appView").classList.add("hidden");
+  document.getElementById("loginView").classList.remove("hidden");
+}
+
+async function checkSession() {
+  const pin = currentPin();
+  if (!pin) return;
+  const result = await apiGet("getMeta");
+  if (result && !result.error) {
+    document.getElementById("loginView").classList.add("hidden");
+    document.getElementById("appView").classList.remove("hidden");
+    initApp();
+  } else {
+    logout();
+  }
+}
+
+// A GET-based check used only during login, since apiGet() assumes a session pin already exists.
+async function apiPostRaw(pin, params) {
+  let url = `${API_URL}?action=${params.action}&pin=${encodeURIComponent(pin)}`;
+  const res = await fetch(url);
+  return res.json();
+}
+
+// ---------- TABS ----------
+function showTab(tab) {
+  document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+  document.querySelector(`.tab-btn[data-tab="${tab}"]`).classList.add("active");
+  document.querySelectorAll("[id^='tab-']").forEach(s => s.classList.add("hidden"));
+  document.getElementById(`tab-${tab}`).classList.remove("hidden");
+
+  if (tab === "dashboard") loadDashboard();
+  if (tab === "invoices") loadInvoices();
+  if (tab === "monthly") loadMonthlyReport();
+}
+
+// ---------- INIT ----------
+function todayStr() {
+  return new Date().toISOString().split("T")[0];
+}
+
+function currentMonthStr() {
+  return new Date().toISOString().substring(0, 7);
+}
+
+function initApp() {
+  document.getElementById("entryDate").value = todayStr();
+  document.getElementById("dashDate").value = todayStr();
+  document.getElementById("invDate").value = todayStr();
+  document.getElementById("monthPicker").value = currentMonthStr();
+  buildEntryRows();
+  loadEntryForDate(todayStr());
+
+  document.getElementById("entryDate").addEventListener("change", e => loadEntryForDate(e.target.value));
+}
+
+function buildEntryRows() {
+  const spWrap = document.getElementById("salespersonRows");
+  spWrap.innerHTML = "";
+  SALESPEOPLE.forEach(name => {
+    const row = document.createElement("div");
+    row.className = "row-with-attendance";
+    row.innerHTML = `
+      <label>${name}</label>
+      <input type="number" id="sp_${name.replace(/\s/g,'')}" placeholder="0">
+      <select id="att_${name.replace(/\s/g,'')}">
+        ${ATTENDANCE_STATUSES.map(s => `<option value="${s}">${s}</option>`).join("")}
+      </select>`;
+    spWrap.appendChild(row);
+  });
+
+  const brWrap = document.getElementById("branchRows");
+  brWrap.innerHTML = "";
+  BRANCHES.forEach(name => {
+    const row = document.createElement("div");
+    row.className = "row";
+    row.innerHTML = `<label>${name}</label><input type="number" id="br_${name.replace(/\s/g,'')}" placeholder="0">`;
+    brWrap.appendChild(row);
+  });
+}
+
+// ---------- API HELPERS ----------
+async function apiGet(action, extraParams) {
+  let url = `${API_URL}?action=${action}&pin=${encodeURIComponent(currentPin())}`;
+  if (extraParams) Object.keys(extraParams).forEach(k => url += `&${k}=${encodeURIComponent(extraParams[k])}`);
+  const res = await fetch(url);
+  return res.json();
+}
+
+async function apiPost(body) {
+  body.pin = currentPin();
+  const res = await fetch(API_URL, { method: "POST", body: JSON.stringify(body) });
+  return res.json();
+}
+
+// ---------- DAILY ENTRY ----------
+async function loadEntryForDate(date) {
+  try {
+    const data = await apiGet("getDaily", { date });
+    SALESPEOPLE.forEach(name => {
+      const el = document.getElementById(`sp_${name.replace(/\s/g,'')}`);
+      el.value = data.salespersonSales && data.salespersonSales[name] ? data.salespersonSales[name] : "";
+      const attEl = document.getElementById(`att_${name.replace(/\s/g,'')}`);
+      attEl.value = data.attendance && data.attendance[name] ? data.attendance[name] : "Present";
+    });
+    BRANCHES.forEach(name => {
+      const el = document.getElementById(`br_${name.replace(/\s/g,'')}`);
+      el.value = data.branchSales && data.branchSales[name] ? data.branchSales[name] : "";
+    });
+  } catch (err) {
+    console.error("Could not load existing entries", err);
+  }
+}
+
+async function saveEntry() {
+  const date = document.getElementById("entryDate").value;
+  const spEntries = {};
+  SALESPEOPLE.forEach(name => spEntries[name] = document.getElementById(`sp_${name.replace(/\s/g,'')}`).value || 0);
+  const brEntries = {};
+  BRANCHES.forEach(name => brEntries[name] = document.getElementById(`br_${name.replace(/\s/g,'')}`).value || 0);
+  const attEntries = {};
+  SALESPEOPLE.forEach(name => attEntries[name] = document.getElementById(`att_${name.replace(/\s/g,'')}`).value || "Present");
+
+  const msgEl = document.getElementById("entryMsg");
+  msgEl.classList.remove("hidden", "success", "error");
+  msgEl.textContent = "Saving...";
+
+  try {
+    await apiPost({ action: "saveDailySales", date, entries: spEntries });
+    await apiPost({ action: "saveBranchSales", date, entries: brEntries });
+    await apiPost({ action: "saveAttendance", date, entries: attEntries });
+    msgEl.textContent = `Saved sales & attendance for ${date}.`;
+    msgEl.classList.add("success");
+  } catch (err) {
+    msgEl.textContent = "Error saving. Check your internet connection and try again.";
+    msgEl.classList.add("error");
+  }
+}
+
+// ---------- DASHBOARD ----------
+async function loadDashboard() {
+  const date = document.getElementById("dashDate").value || todayStr();
+  const data = await apiGet("getDaily", { date });
+
+  const empBody = document.querySelector("#empTable tbody");
+  empBody.innerHTML = "";
+  let empTotal = 0;
+  SALESPEOPLE.forEach(name => {
+    const amt = Number(data.salespersonSales && data.salespersonSales[name] || 0);
+    empTotal += amt;
+    empBody.innerHTML += `<tr><td>${name}</td><td style="text-align:right;">₹${amt.toLocaleString('en-IN')}</td></tr>`;
+  });
+  empBody.innerHTML += `<tr class="total-row"><td>Total</td><td style="text-align:right;">₹${empTotal.toLocaleString('en-IN')}</td></tr>`;
+
+  const brBody = document.querySelector("#branchTable tbody");
+  brBody.innerHTML = "";
+  let brTotal = 0;
+  BRANCHES.forEach(name => {
+    const amt = Number(data.branchSales && data.branchSales[name] || 0);
+    brTotal += amt;
+    brBody.innerHTML += `<tr><td>${name}</td><td style="text-align:right;">₹${amt.toLocaleString('en-IN')}</td></tr>`;
+  });
+  brBody.innerHTML += `<tr class="total-row"><td>Total</td><td style="text-align:right;">₹${brTotal.toLocaleString('en-IN')}</td></tr>`;
+
+  buildWhatsAppSummary(date, data, empTotal, brTotal);
+}
+
+function formatDateReadable(dateStr) {
+  const d = new Date(dateStr);
+  return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+let currentSummaryText = "";
+
+function buildWhatsAppSummary(date, data, empTotal, brTotal) {
+  let lines = [];
+  lines.push(`*JCM ENTERPRISE — DAILY SALES REPORT*`);
+  lines.push(`📅 ${formatDateReadable(date)}`);
+  lines.push(``);
+  lines.push(`*Employee Sales*`);
+  SALESPEOPLE.forEach(name => {
+    const amt = Number(data.salespersonSales && data.salespersonSales[name] || 0);
+    lines.push(`${name}: ₹${amt.toLocaleString('en-IN')}`);
+  });
+  lines.push(`*Total: ₹${empTotal.toLocaleString('en-IN')}*`);
+  lines.push(``);
+  lines.push(`*Branch Sales*`);
+  BRANCHES.forEach(name => {
+    const amt = Number(data.branchSales && data.branchSales[name] || 0);
+    lines.push(`${name}: ₹${amt.toLocaleString('en-IN')}`);
+  });
+  lines.push(`*Total: ₹${brTotal.toLocaleString('en-IN')}*`);
+
+  currentSummaryText = lines.join("\n");
+  document.getElementById("waSummary").textContent = currentSummaryText;
+}
+
+function shareWhatsApp() {
+  const text = encodeURIComponent(currentSummaryText);
+  const url = OWNER_PHONE ? `https://wa.me/${OWNER_PHONE}?text=${text}` : `https://wa.me/?text=${text}`;
+  window.open(url, "_blank");
+}
+
+function copySummary() {
+  navigator.clipboard.writeText(currentSummaryText).then(() => alert("Report copied to clipboard."));
+}
+
+// ---------- INVOICES: BUSY HTML IMPORT ----------
+// BUSY's "Bills Receivable" HTML export is a real <table>, which is far more
+// reliable to parse than its PDF export (PDF text often loses column
+// alignment). We match header cells loosely against a few known aliases.
+const COLUMN_ALIASES = {
+  invoiceNo: ["billno", "billno.", "voucherno", "refno", "invoiceno", "docno"],
+  party: ["partyname", "party", "accountname", "name", "customername"],
+  amount: ["pendingamount", "balance", "amount", "billamount", "netamount", "outstandingamount"],
+  invoiceDate: ["billdate", "vchdate", "voucherdate", "invoicedate", "date"]
+};
+
+function normalizeHeader(h) {
+  return String(h || "").toLowerCase().replace(/[\s.]/g, "");
+}
+
+function parseBusyDate(raw) {
+  const s = String(raw).trim();
+  const m = s.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{2,4})$/);
+  if (m) {
+    let [, d, mo, y] = m;
+    if (y.length === 2) y = "20" + y;
+    return `${y}-${mo.padStart(2, "0")}-${d.padStart(2, "0")}`;
+  }
+  return s;
+}
+
+function findColumnIndex(headers, aliasKey) {
+  const normalized = headers.map(normalizeHeader);
+  const aliases = COLUMN_ALIASES[aliasKey];
+  for (let i = 0; i < normalized.length; i++) {
+    if (aliases.includes(normalized[i])) return i;
+  }
+  return -1;
+}
+
+function parseBusyHtmlTable(htmlText) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(htmlText, "text/html");
+  const tables = Array.from(doc.querySelectorAll("table"));
+  if (!tables.length) return null;
+
+  // Pick the largest table on the page (BUSY exports sometimes wrap the
+  // report table inside outer layout tables).
+  let best = tables[0];
+  let bestRowCount = 0;
+  tables.forEach(t => {
+    const count = t.querySelectorAll("tr").length;
+    if (count > bestRowCount) { bestRowCount = count; best = t; }
+  });
+
+  const rows = Array.from(best.querySelectorAll("tr")).map(tr =>
+    Array.from(tr.querySelectorAll("td,th")).map(td => td.textContent.trim())
+  ).filter(r => r.some(c => c !== ""));
+
+  return rows;
+}
+
+async function importHtml() {
+  const fileInput = document.getElementById("htmlFile");
+  const msgEl = document.getElementById("importMsg");
+  msgEl.classList.remove("hidden", "success", "error");
+
+  if (!fileInput.files.length) {
+    msgEl.classList.add("error");
+    msgEl.textContent = "Choose the BUSY HTML export file first.";
+    return;
+  }
+
+  const file = fileInput.files[0];
+  const text = await file.text();
+  const rows = parseBusyHtmlTable(text);
+
+  if (!rows || rows.length < 2) {
+    msgEl.classList.add("error");
+    msgEl.textContent = "Couldn't find a data table in that file.";
+    return;
+  }
+
+  // Find the header row: the first row where we can match at least the
+  // invoice number and amount columns (BUSY HTML exports sometimes have a
+  // title row above the real header row).
+  let headerRowIdx = -1, idx = null;
+  for (let i = 0; i < Math.min(rows.length, 5); i++) {
+    const candidate = {
+      invoiceNo: findColumnIndex(rows[i], "invoiceNo"),
+      party: findColumnIndex(rows[i], "party"),
+      amount: findColumnIndex(rows[i], "amount"),
+      invoiceDate: findColumnIndex(rows[i], "invoiceDate")
+    };
+    if (candidate.invoiceNo !== -1 && candidate.amount !== -1) {
+      headerRowIdx = i;
+      idx = candidate;
+      break;
+    }
+  }
+
+  if (headerRowIdx === -1) {
+    msgEl.classList.add("error");
+    msgEl.textContent = "Couldn't recognize the column headers in this file. Send Claude the header row text so the matching can be updated.";
+    return;
+  }
+
+  const missing = Object.keys(idx).filter(k => idx[k] === -1);
+  if (missing.length) {
+    msgEl.classList.add("error");
+    msgEl.textContent = `Couldn't find a column for: ${missing.join(", ")}. Send Claude the header row so it can be added.`;
+    return;
+  }
+
+  const dataRows = rows.slice(headerRowIdx + 1);
+  const invoices = dataRows.map(r => ({
+    invoiceNo: r[idx.invoiceNo],
+    party: r[idx.party],
+    amount: (r[idx.amount] || "").replace(/[^0-9.\-]/g, ""),
+    invoiceDate: parseBusyDate(r[idx.invoiceDate])
+  })).filter(inv => inv.invoiceNo && inv.invoiceNo.trim() !== "" && inv.amount !== "");
+
+  if (!invoices.length) {
+    msgEl.classList.add("error");
+    msgEl.textContent = "Found the table but no usable invoice rows in it. Check the exported file.";
+    return;
+  }
+
+  msgEl.textContent = `Importing ${invoices.length} rows...`;
+
+  try {
+    const result = await apiPost({ action: "bulkAddInvoices", invoices });
+    msgEl.classList.add("success");
+    msgEl.textContent = `Imported ${result.added} new invoice(s). Skipped ${result.skipped} already on file (matched by invoice number).`;
+    fileInput.value = "";
+    loadInvoices();
+  } catch (err) {
+    msgEl.classList.add("error");
+    msgEl.textContent = "Import failed. Check your internet connection and try again.";
+  }
+}
+
+// ---------- INVOICES: manual + list ----------
+async function addInvoice() {
+  const invoiceNo = document.getElementById("invNo").value.trim();
+  const party = document.getElementById("invParty").value.trim();
+  const amount = document.getElementById("invAmount").value;
+  const invoiceDate = document.getElementById("invDate").value;
+  const msgEl = document.getElementById("invMsg");
+
+  if (!invoiceNo || !party || !amount || !invoiceDate) {
+    msgEl.classList.remove("hidden", "success");
+    msgEl.classList.add("error");
+    msgEl.textContent = "Please fill in all fields.";
+    return;
+  }
+
+  msgEl.classList.remove("hidden", "error", "success");
+  msgEl.textContent = "Saving...";
+
+  try {
+    await apiPost({ action: "addInvoice", invoiceNo, party, amount, invoiceDate });
+    msgEl.textContent = `Invoice ${invoiceNo} added.`;
+    msgEl.classList.add("success");
+    document.getElementById("invNo").value = "";
+    document.getElementById("invParty").value = "";
+    document.getElementById("invAmount").value = "";
+    loadInvoices();
+  } catch (err) {
+    msgEl.textContent = "Error saving invoice. Try again.";
+    msgEl.classList.add("error");
+  }
+}
+
+async function loadInvoices() {
+  const data = await apiGet("getInvoices");
+  const tbody = document.querySelector("#invTable tbody");
+  tbody.innerHTML = "";
+
+  const unpaid = (data.invoices || []).filter(inv => inv.status !== "Cleared");
+  unpaid.sort((a, b) => new Date(a.invoiceDate) - new Date(b.invoiceDate));
+
+  if (unpaid.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--muted);">No outstanding invoices.</td></tr>`;
+    return;
+  }
+
+  unpaid.forEach(inv => {
+    const days = Math.floor((new Date() - new Date(inv.invoiceDate)) / (1000 * 60 * 60 * 24));
+    let badgeClass = "ok";
+    if (days > 60) badgeClass = "danger";
+    else if (days > 30) badgeClass = "warn";
+
+    tbody.innerHTML += `
+      <tr>
+        <td>${inv.invoiceNo}</td>
+        <td>${inv.party}</td>
+        <td style="text-align:right;">₹${Number(inv.amount).toLocaleString('en-IN')}</td>
+        <td><span class="badge ${badgeClass}">${days} days</span></td>
+        <td><button class="secondary" style="padding:5px 10px;font-size:11px;" onclick="clearInvoice('${inv.invoiceNo}')">Mark Cleared</button></td>
+      </tr>`;
+  });
+}
+
+async function clearInvoice(invoiceNo) {
+  if (!confirm(`Mark invoice ${invoiceNo} as cleared/paid?`)) return;
+  await apiPost({ action: "markInvoiceCleared", invoiceNo });
+  loadInvoices();
+}
+
+// ---------- MONTHLY REPORT (salary-calc-ready) ----------
+let currentMonthlyRows = [];
+
+async function loadMonthlyReport() {
+  const month = document.getElementById("monthPicker").value || currentMonthStr();
+  const data = await apiGet("getMonthlyReport", { month });
+  currentMonthlyRows = data.rows || [];
+
+  const tbody = document.querySelector("#monthlyTable tbody");
+  tbody.innerHTML = "";
+
+  currentMonthlyRows.forEach(r => {
+    let badgeClass = "danger";
+    if (r.achievedPct === null) badgeClass = "warn";
+    else if (r.achievedPct >= 100) badgeClass = "ok";
+    else if (r.achievedPct >= 75) badgeClass = "warn";
+
+    const pctLabel = r.achievedPct === null ? "no salary set" : `${r.achievedPct}%`;
+    const attendanceLabel = r.attendanceMarked
+      ? `${r.daysPresent}P / ${r.daysHalf}H / ${r.daysLeave}L`
+      : `<span class="badge warn">not marked</span>`;
+
+    tbody.innerHTML += `
+      <tr>
+        <td>${r.salesperson}</td>
+        <td style="text-align:right;">₹${r.monthlySalary.toLocaleString('en-IN')}</td>
+        <td style="text-align:right;">₹${r.target.toLocaleString('en-IN')}</td>
+        <td style="text-align:right;">₹${r.achieved.toLocaleString('en-IN')}</td>
+        <td><span class="badge ${badgeClass}">${pctLabel}</span></td>
+        <td style="text-align:right;">${r.variance >= 0 ? "+" : ""}₹${r.variance.toLocaleString('en-IN')}</td>
+        <td>${attendanceLabel}</td>
+        <td style="text-align:right;"><strong>₹${r.proratedSalary.toLocaleString('en-IN')}</strong></td>
+      </tr>`;
+  });
+
+  if (!currentMonthlyRows.length) {
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--muted);">No data for this month yet.</td></tr>`;
+  }
+}
+
+function downloadMonthlyCsv() {
+  const month = document.getElementById("monthPicker").value || currentMonthStr();
+  let csv = "Salesperson,Monthly Salary,Target (Salary x 40),Achieved,Achieved %,Variance,Days Present,Days Half,Days Leave,Payable Salary (Prorated)\n";
+  currentMonthlyRows.forEach(r => {
+    csv += `${r.salesperson},${r.monthlySalary},${r.target},${r.achieved},${r.achievedPct === null ? "" : r.achievedPct},${r.variance},${r.daysPresent},${r.daysHalf},${r.daysLeave},${r.proratedSalary}\n`;
+  });
+
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `JCM_Salary_Calc_${month}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ---------- START ----------
+window.addEventListener("DOMContentLoaded", checkSession);
