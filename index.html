@@ -82,7 +82,10 @@
       <div id="branchRows"></div>
 
       <div class="actions">
-        <button class="primary" onclick="saveEntry()">Save Today's Sales</button>
+        <button class="primary" onclick="saveEntry()">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 8.5l3 3 7-7" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Save Today's Sales
+        </button>
       </div>
       <p id="entryMsg" class="msg hidden" style="margin-top:14px;"></p>
     </div>
@@ -90,6 +93,17 @@
 
   <!-- DASHBOARD TAB -->
   <section id="tab-dashboard" class="hidden">
+    <div class="stat-row">
+      <div class="stat-card">
+        <div class="stat-label">Employee Sales Total</div>
+        <div class="stat-value" id="statEmpTotal">₹0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Branch Sales Total</div>
+        <div class="stat-value" id="statBranchTotal">₹0</div>
+      </div>
+    </div>
+
     <div class="card">
       <h2>Daily Summary</h2>
       <label for="dashDate">Select date</label>
@@ -97,10 +111,14 @@
       <button class="secondary" onclick="loadDashboard()" style="margin-bottom:16px;">Refresh</button>
 
       <h3>Employee-wise Sales</h3>
-      <table id="empTable"><thead><tr><th>Salesperson</th><th style="text-align:right;">Amount (₹)</th></tr></thead><tbody></tbody></table>
+      <div class="table-wrap">
+        <table id="empTable"><thead><tr><th>Salesperson</th><th style="text-align:right;">Amount (₹)</th></tr></thead><tbody></tbody></table>
+      </div>
 
       <h3 style="margin-top:20px;">Branch-wise Sales</h3>
-      <table id="branchTable"><thead><tr><th>Branch</th><th style="text-align:right;">Amount (₹)</th></tr></thead><tbody></tbody></table>
+      <div class="table-wrap">
+        <table id="branchTable"><thead><tr><th>Branch</th><th style="text-align:right;">Amount (₹)</th></tr></thead><tbody></tbody></table>
+      </div>
     </div>
 
     <div class="card">
@@ -108,7 +126,10 @@
       <p class="muted-small">This generates today's report as text. Screenshot this box, or tap the button to open WhatsApp with it pre-filled.</p>
       <div id="waSummary" class="summary-box">Select a date above to generate the report.</div>
       <div class="actions">
-        <button class="whatsapp" onclick="shareWhatsApp()">Share on WhatsApp</button>
+        <button class="whatsapp" onclick="shareWhatsApp()">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="white"><path d="M17.6 6.3A8.9 8.9 0 0012 4a9 9 0 00-7.8 13.5L3 21l3.6-1.2A9 9 0 1017.6 6.3zM12 19.4a7.4 7.4 0 01-3.8-1l-.3-.2-2.8.9.9-2.7-.2-.3A7.4 7.4 0 1119.4 12 7.4 7.4 0 0112 19.4zm4-5.5c-.2-.1-1.3-.6-1.5-.7s-.3-.1-.5.1-.6.7-.7.8-.3.2-.5.1a6 6 0 01-1.8-1.1 6.6 6.6 0 01-1.2-1.5c-.1-.2 0-.3.1-.4l.3-.4.2-.3v-.3c0-.1-.5-1.3-.7-1.7s-.4-.4-.5-.4h-.5a.9.9 0 00-.6.3 2.7 2.7 0 00-.8 2 4.6 4.6 0 001 2.5 10.6 10.6 0 004 3.6c.5.2 1 .4 1.3.5a3.2 3.2 0 001.5.1 2.5 2.5 0 001.6-1.1 2 2 0 00.1-1.1c-.1-.1-.2-.2-.4-.3z"/></svg>
+          Share on WhatsApp
+        </button>
         <button class="secondary" onclick="copySummary()">Copy Text</button>
       </div>
     </div>
@@ -145,10 +166,12 @@
     <div class="card">
       <h2>Outstanding Invoices</h2>
       <p class="muted-small">Auto-flags: <span class="badge ok">0-30 days</span> &nbsp;<span class="badge warn">31-60 days</span> &nbsp;<span class="badge danger">60+ days (overdue)</span></p>
-      <table id="invTable">
-        <thead><tr><th>Invoice No.</th><th>Party</th><th style="text-align:right;">Amount (₹)</th><th>Days Outstanding</th><th></th></tr></thead>
-        <tbody></tbody>
-      </table>
+      <div class="table-wrap">
+        <table id="invTable">
+          <thead><tr><th>Invoice No.</th><th>Party</th><th style="text-align:right;">Amount (₹)</th><th>Days Outstanding</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
     </div>
   </section>  <!-- MONTHLY REPORT TAB -->
   <section id="tab-monthly" class="hidden">
@@ -159,24 +182,29 @@
       <input type="month" id="monthPicker" onchange="loadMonthlyReport()">
       <button class="secondary" onclick="loadMonthlyReport()" style="margin-bottom:16px;">Refresh</button>
 
-      <table id="monthlyTable">
-        <thead>
-          <tr>
-            <th>Salesperson</th>
-            <th style="text-align:right;">Monthly Salary</th>
-            <th style="text-align:right;">Target (×40)</th>
-            <th style="text-align:right;">Achieved</th>
-            <th>% of Target</th>
-            <th style="text-align:right;">Variance</th>
-            <th>Attendance (P/H/L)</th>
-            <th style="text-align:right;">Payable Salary</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
+      <div class="table-wrap">
+        <table id="monthlyTable">
+          <thead>
+            <tr>
+              <th>Salesperson</th>
+              <th style="text-align:right;">Monthly Salary</th>
+              <th style="text-align:right;">Target (×40)</th>
+              <th style="text-align:right;">Achieved</th>
+              <th>% of Target</th>
+              <th style="text-align:right;">Variance</th>
+              <th>Attendance (P/H/L)</th>
+              <th style="text-align:right;">Payable Salary</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
 
       <div class="actions">
-        <button class="primary" onclick="downloadMonthlyCsv()">Download CSV</button>
+        <button class="primary" onclick="downloadMonthlyCsv()">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 1v9m0 0L4.5 6.5M8 10l3.5-3.5M2 12v2h12v-2" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Download CSV
+        </button>
       </div>
     </div>
   </section>
