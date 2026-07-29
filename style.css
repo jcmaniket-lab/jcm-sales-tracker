@@ -1,7 +1,8 @@
 :root {
-  --jcm-orange: #E4622B;
-  --jcm-orange-dark: #C24A1B;
-  --jcm-orange-tint: #FDEEE7;
+  --jcm-orange: #F7584A;       /* sampled from real logo — deeper coral stop */
+  --jcm-orange-dark: #CA483C;  /* hover state, darkened */
+  --jcm-orange-tint: #FDE7E3;
+  --jcm-coral-light: #FEA393;  /* sampled from real logo — lighter gradient stop */
   --jcm-red: #B0231C;
   --red-tint: #FBE6E4;
   --ink: #241C18;
@@ -30,7 +31,7 @@ html { scroll-behavior: smooth; }
 body {
   margin: 0;
   background:
-    radial-gradient(ellipse 900px 300px at 15% -10%, rgba(228, 98, 43, 0.05), transparent 60%),
+    radial-gradient(ellipse 900px 300px at 15% -10%, rgba(247, 88, 74, 0.05), transparent 60%),
     radial-gradient(ellipse 700px 300px at 100% 0%, rgba(78, 90, 100, 0.04), transparent 60%),
     var(--paper);
   color: var(--ink);
@@ -63,8 +64,10 @@ body {
   border-bottom: 1px solid var(--line);
 }
 
-.brand-mark { display: flex; align-items: center; gap: 12px; }
-.brand-mark svg { flex-shrink: 0; }
+.brand-mark { display: flex; align-items: center; gap: 10px; }
+.brand-mark img { flex-shrink: 0; height: 32px; width: auto; display: block; }
+
+.login-mark img { height: 60px; width: auto; opacity: 0.9; }
 
 .brand-text .brand {
   font-family: var(--font-display);
