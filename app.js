@@ -116,6 +116,21 @@ function buildEntryRows() {
   });
 }
 
+// Shows a small spinner + text in a .msg element while an async action runs.
+function showLoadingMsg(elId, text) {
+  const el = document.getElementById(elId);
+  el.classList.remove("hidden", "success", "error");
+  el.classList.add("loading");
+  el.innerHTML = `<span class="spinner"></span> ${text}`;
+}
+
+function showResultMsg(elId, text, ok) {
+  const el = document.getElementById(elId);
+  el.classList.remove("loading", "success", "error");
+  el.classList.add(ok ? "success" : "error");
+  el.innerHTML = text;
+}
+
 // ---------- API HELPERS ----------
 async function apiGet(action, extraParams) {
   let url = `${API_URL}?action=${action}&pin=${encodeURIComponent(currentPin())}`;
@@ -159,18 +174,16 @@ async function saveEntry() {
   SALESPEOPLE.forEach(name => attEntries[name] = document.getElementById(`att_${name.replace(/\s/g,'')}`).value || "Present");
 
   const msgEl = document.getElementById("entryMsg");
-  msgEl.classList.remove("hidden", "success", "error");
-  msgEl.textContent = "Saving...";
+  msgEl.classList.remove("hidden");
+  showLoadingMsg("entryMsg", "Saving...");
 
   try {
     await apiPost({ action: "saveDailySales", date, entries: spEntries });
     await apiPost({ action: "saveBranchSales", date, entries: brEntries });
     await apiPost({ action: "saveAttendance", date, entries: attEntries });
-    msgEl.textContent = `Saved sales & attendance for ${date}.`;
-    msgEl.classList.add("success");
+    showResultMsg("entryMsg", `Saved sales &amp; attendance for ${date}.`, true);
   } catch (err) {
-    msgEl.textContent = "Error saving. Check your internet connection and try again.";
-    msgEl.classList.add("error");
+    showResultMsg("entryMsg", "Error saving. Check your internet connection and try again.", false);
   }
 }
 
@@ -198,6 +211,9 @@ async function loadDashboard() {
     brBody.innerHTML += `<tr><td>${name}</td><td style="text-align:right;">₹${amt.toLocaleString('en-IN')}</td></tr>`;
   });
   brBody.innerHTML += `<tr class="total-row"><td>Total</td><td style="text-align:right;">₹${brTotal.toLocaleString('en-IN')}</td></tr>`;
+
+  document.getElementById("statEmpTotal").textContent = `₹${empTotal.toLocaleString('en-IN')}`;
+  document.getElementById("statBranchTotal").textContent = `₹${brTotal.toLocaleString('en-IN')}`;
 
   buildWhatsAppSummary(date, data, empTotal, brTotal);
 }
@@ -365,17 +381,16 @@ async function importHtml() {
     return;
   }
 
-  msgEl.textContent = `Importing ${invoices.length} rows...`;
+  msgEl.textContent = "";
+  showLoadingMsg("importMsg", `Importing ${invoices.length} rows...`);
 
   try {
     const result = await apiPost({ action: "bulkAddInvoices", invoices });
-    msgEl.classList.add("success");
-    msgEl.textContent = `Imported ${result.added} new invoice(s). Skipped ${result.skipped} already on file (matched by invoice number).`;
+    showResultMsg("importMsg", `Imported ${result.added} new invoice(s). Skipped ${result.skipped} already on file (matched by invoice number).`, true);
     fileInput.value = "";
     loadInvoices();
   } catch (err) {
-    msgEl.classList.add("error");
-    msgEl.textContent = "Import failed. Check your internet connection and try again.";
+    showResultMsg("importMsg", "Import failed. Check your internet connection and try again.", false);
   }
 }
 
@@ -394,20 +409,17 @@ async function addInvoice() {
     return;
   }
 
-  msgEl.classList.remove("hidden", "error", "success");
-  msgEl.textContent = "Saving...";
+  showLoadingMsg("invMsg", "Saving...");
 
   try {
     await apiPost({ action: "addInvoice", invoiceNo, party, amount, invoiceDate });
-    msgEl.textContent = `Invoice ${invoiceNo} added.`;
-    msgEl.classList.add("success");
+    showResultMsg("invMsg", `Invoice ${invoiceNo} added.`, true);
     document.getElementById("invNo").value = "";
     document.getElementById("invParty").value = "";
     document.getElementById("invAmount").value = "";
     loadInvoices();
   } catch (err) {
-    msgEl.textContent = "Error saving invoice. Try again.";
-    msgEl.classList.add("error");
+    showResultMsg("invMsg", "Error saving invoice. Try again.", false);
   }
 }
 
