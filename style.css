@@ -44,35 +44,37 @@ body {
   padding: 0 16px calc(var(--nav-height) + 28px);
 }
 
-/* ---------- Top header: simple, no blur, no heavy effects ---------- */
+/* ---------- Top header ---------- */
 .topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 0 14px;
+  padding: 14px 0 12px;
   margin-bottom: 18px;
   border-bottom: 1px solid var(--line);
+  gap: 12px;
 }
 
-.brand-mark { display: flex; align-items: center; gap: 10px; }
-.brand-mark img { flex-shrink: 0; height: 30px; width: auto; display: block; }
-
-.brand-text .brand {
-  font-family: var(--font-display);
-  font-size: 20px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  line-height: 1.15;
-  color: var(--ink);
+.header-logo {
+  height: 34px;
+  width: auto;
+  display: block;
+  flex-shrink: 0;
 }
-.brand span { color: var(--jcm-orange); }
 
-.tagline {
-  font-size: 10px;
+.header-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.header-subtitle {
+  font-size: 9.5px;
   text-transform: uppercase;
   letter-spacing: 0.14em;
   color: var(--muted);
-  font-weight: 600;
+  font-weight: 700;
 }
 
 /* ---------- Bottom nav: thumb-reachable, app-like ---------- */
@@ -375,9 +377,14 @@ tr.total-row td:first-child { font-family: var(--font-body); }
 }
 
 /* ---------- Login ---------- */
-.login-wrap { max-width: 320px; margin: 70px auto 0; text-align: center; padding: 0 12px; }
-.login-mark { display: flex; justify-content: center; margin-bottom: 4px; }
-.login-mark img { height: 56px; width: auto; }
+.login-wrap {
+  max-width: 340px;
+  margin: 60px auto 0;
+  text-align: center;
+  padding: 0 16px;
+}
+.login-mark { display: flex; justify-content: center; margin-bottom: 14px; }
+.login-logo { height: 80px; width: auto; }
 
 .hidden { display: none !important; }
 .actions { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
