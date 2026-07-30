@@ -459,51 +459,152 @@ async function clearInvoice(invoiceNo) {
   loadInvoices();
 }
 
-// ---------- MONTHLY REPORT (salary-calc-ready) ----------
+// ---------- MONTHLY REPORT (full incentive logic) ----------
 let currentMonthlyRows = [];
+let currentMonthlyMeta = {};
 
 async function loadMonthlyReport() {
   const month = document.getElementById("monthPicker").value || currentMonthStr();
+  showLoadingMsg("monthlyMsg", "Loading report...");
+  document.getElementById("monthlyMsg").classList.remove("hidden");
+
   const data = await apiGet("getMonthlyReport", { month });
   currentMonthlyRows = data.rows || [];
+  currentMonthlyMeta = { clawbackTotal: data.clawbackTotal, clawbackInvoices: data.clawbackInvoices };
+
+  document.getElementById("monthlyMsg").classList.add("hidden");
 
   const tbody = document.querySelector("#monthlyTable tbody");
   tbody.innerHTML = "";
 
+  if (!currentMonthlyRows.length) {
+    tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:20px;">No data for this month yet.</td></tr>`;
+    return;
+  }
+
   currentMonthlyRows.forEach(r => {
-    let badgeClass = "danger";
-    if (r.achievedPct === null) badgeClass = "warn";
-    else if (r.achievedPct >= 100) badgeClass = "ok";
-    else if (r.achievedPct >= 75) badgeClass = "warn";
+    // Achievement badge
+    let achClass = "danger";
+    if (r.achievedPct === null) achClass = "warn";
+    else if (r.achievedPct >= 150) achClass = "ok";
+    else if (r.achievedPct >= 100) achClass = "ok";
+    const pctLabel = r.achievedPct === null ? "—" : `${r.achievedPct}%`;
 
-    const pctLabel = r.achievedPct === null ? "no salary set" : `${r.achievedPct}%`;
-    const attendanceLabel = r.attendanceMarked
-      ? `${r.daysPresent}P / ${r.daysHalf}H / ${r.daysLeave}L`
-      : `<span class="badge warn">not marked</span>`;
+    // Increment status badge
+    let incClass = "warn";
+    let incIcon = "";
+    if (r.incrementFlag === "phase1_eligible" || r.incrementFlag === "phase2_eligible") {
+      incClass = "ok"; incIcon = "🔔 ";
+    } else if (r.incrementFlag === "phase2_confirmed") {
+      incClass = "ok"; incIcon = "✓ ";
+    } else if (r.incrementFlag === "frozen") {
+      incClass = "danger"; incIcon = "❄ ";
+    }
 
-    tbody.innerHTML += `
-      <tr>
-        <td>${r.salesperson}</td>
-        <td style="text-align:right;">₹${r.monthlySalary.toLocaleString('en-IN')}</td>
-        <td style="text-align:right;">₹${r.target.toLocaleString('en-IN')}</td>
-        <td style="text-align:right;">₹${r.achieved.toLocaleString('en-IN')}</td>
-        <td><span class="badge ${badgeClass}">${pctLabel}</span></td>
-        <td style="text-align:right;">${r.variance >= 0 ? "+" : ""}₹${r.variance.toLocaleString('en-IN')}</td>
-        <td>${attendanceLabel}</td>
-        <td style="text-align:right;"><strong>₹${r.proratedSalary.toLocaleString('en-IN')}</strong></td>
-      </tr>`;
+    const attLabel = r.attendanceMarked
+      ? `${r.daysPresent}P ${r.daysHalf}H ${r.daysLeave}L`
+      : `<span class="badge warn">?</span>`;
+
+    tbody.innerHTML += `<tr>
+      <td><strong>${r.salesperson}</strong></td>
+      <td style="text-align:right;">₹${r.monthlySalary.toLocaleString('en-IN')}</td>
+      <td style="text-align:right;">₹${r.target.toLocaleString('en-IN')}</td>
+      <td style="text-align:right;">₹${r.grossAchieved.toLocaleString('en-IN')}</td>
+      <td><span class="badge ${achClass}">${pctLabel}</span></td>
+      <td>${r.bonusTier}</td>
+      <td style="text-align:right;color:var(--ok);font-weight:600;">₹${r.bonus.toLocaleString('en-IN')}</td>
+      <td>${attLabel}</td>
+      <td style="text-align:right;font-weight:700;">₹${r.totalPayable.toLocaleString('en-IN')}</td>
+      <td><span class="badge ${incClass}" style="font-size:10px;white-space:nowrap;">${incIcon}${r.incrementStatus}</span></td>
+    </tr>`;
   });
 
-  if (!currentMonthlyRows.length) {
-    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--muted);">No data for this month yet.</td></tr>`;
+  // Clawback notice
+  const clawEl = document.getElementById("clawbackNotice");
+  if (data.clawbackTotal > 0) {
+    clawEl.classList.remove("hidden");
+    document.getElementById("clawbackAmount").textContent = `₹${data.clawbackTotal.toLocaleString('en-IN')}`;
+    const clawList = document.getElementById("clawbackList");
+    clawList.innerHTML = (data.clawbackInvoices || []).map(inv =>
+      `<li>${inv.invoiceNo} — ${inv.party} — ₹${Number(inv.amount).toLocaleString('en-IN')} (${inv.daysOut} days)</li>`
+    ).join("");
+  } else {
+    clawEl.classList.add("hidden");
   }
+
+  // Show flagged increments
+  renderIncrementAlerts(currentMonthlyRows, month);
+}
+
+function renderIncrementAlerts(rows, month) {
+  const alertBox = document.getElementById("incrementAlerts");
+  const phase1Eligible = rows.filter(r => r.incrementFlag === "phase1_eligible");
+  const phase2Eligible = rows.filter(r => r.incrementFlag === "phase2_eligible");
+
+  if (!phase1Eligible.length && !phase2Eligible.length) {
+    alertBox.classList.add("hidden");
+    return;
+  }
+
+  alertBox.classList.remove("hidden");
+  let html = "";
+
+  if (phase1Eligible.length) {
+    html += `<div class="alert-block alert-orange">
+      <strong>🔔 Phase 1 Increment Due</strong>
+      <p>These salespeople hit 100%+ in 4 of the last 5 months. Per policy, they are eligible for <strong>50% of their increment now</strong>.</p>
+      <ul>${phase1Eligible.map(r => `<li>${r.salesperson}</li>`).join("")}</ul>
+      <button class="primary" style="margin-top:8px;" onclick="confirmIncrements('phase1', '${month}')">Confirm & Record Phase 1</button>
+    </div>`;
+  }
+
+  if (phase2Eligible.length) {
+    html += `<div class="alert-block alert-ok">
+      <strong>✅ Phase 2 Increment Due</strong>
+      <p>These salespeople completed 3 more months at 100%+ after Phase 1. Per policy, their <strong>remaining 50% increment is now confirmed</strong>.</p>
+      <ul>${phase2Eligible.map(r => `<li>${r.salesperson}</li>`).join("")}</ul>
+      <button class="primary" style="margin-top:8px;background:var(--ok);" onclick="confirmIncrements('phase2', '${month}')">Confirm & Record Phase 2</button>
+    </div>`;
+  }
+
+  alertBox.innerHTML = html;
+}
+
+async function confirmIncrements(phase, month) {
+  if (!confirm(`Record ${phase === "phase1" ? "Phase 1" : "Phase 2"} increment confirmations for ${month}? This will update the IncentiveStatus sheet.`)) return;
+
+  const eligible = currentMonthlyRows.filter(r =>
+    r.incrementFlag === (phase === "phase1" ? "phase1_eligible" : "phase2_eligible")
+  );
+
+  const records = currentMonthlyRows.map(r => ({
+    salesperson: r.salesperson,
+    achievedPct: r.achievedPct,
+    hitTarget: r.hitTarget,
+    phase1Triggered: phase === "phase1" ? eligible.some(e => e.salesperson === r.salesperson) : (r.phase1Month !== null),
+    phase2Triggered: phase === "phase2" ? eligible.some(e => e.salesperson === r.salesperson) : (r.phase2Month !== null),
+    notes: phase === "phase1"
+      ? (eligible.some(e => e.salesperson === r.salesperson) ? "Phase 1 confirmed" : "")
+      : (eligible.some(e => e.salesperson === r.salesperson) ? "Phase 2 confirmed" : "")
+  }));
+
+  await apiPost({ action: "saveMonthlyIncentiveRecord", month, records });
+  alert("Recorded. Update salaries in the Targets sheet manually to complete the increment.");
+  loadMonthlyReport();
 }
 
 function downloadMonthlyCsv() {
   const month = document.getElementById("monthPicker").value || currentMonthStr();
-  let csv = "Salesperson,Monthly Salary,Target (Salary x 40),Achieved,Achieved %,Variance,Days Present,Days Half,Days Leave,Payable Salary (Prorated)\n";
+  let csv = "Salesperson,Monthly Salary,Target (x40),Gross Achieved,Achievement %,Bonus Tier,Bonus Amount,Days Present,Days Half,Days Leave,Prorated Salary,Total Payable,Increment Status\n";
   currentMonthlyRows.forEach(r => {
-    csv += `${r.salesperson},${r.monthlySalary},${r.target},${r.achieved},${r.achievedPct === null ? "" : r.achievedPct},${r.variance},${r.daysPresent},${r.daysHalf},${r.daysLeave},${r.proratedSalary}\n`;
+    csv += [
+      r.salesperson, r.monthlySalary, r.target, r.grossAchieved,
+      r.achievedPct === null ? "" : r.achievedPct,
+      `"${r.bonusTier}"`, r.bonus,
+      r.daysPresent, r.daysHalf, r.daysLeave,
+      r.proratedSalary, r.totalPayable,
+      `"${r.incrementStatus}"`
+    ].join(",") + "\n";
   });
 
   const blob = new Blob([csv], { type: "text/csv" });
