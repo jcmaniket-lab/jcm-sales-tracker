@@ -396,6 +396,18 @@ tr.total-row td:first-child { font-family: var(--font-body); }
 .actions { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
 .muted-small { color: var(--muted); font-size: 12px; margin-top: -4px; margin-bottom: 12px; line-height: 1.5; }
 
+/* Increment alert blocks */
+.alert-block {
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  margin-bottom: 14px;
+  border-left: 4px solid;
+}
+.alert-block ul { margin: 8px 0 0; padding-left: 18px; font-weight: 600; }
+.alert-block p { margin: 6px 0 0; font-size: 13px; }
+.alert-orange { background: var(--jcm-orange-tint); border-color: var(--jcm-orange); }
+.alert-ok { background: var(--ok-tint); border-color: var(--ok); }
+
 @media (max-width: 480px) {
   .row { grid-template-columns: 1fr 100px; }
   .row-with-attendance { grid-template-columns: 1fr 84px 92px; }
