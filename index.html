@@ -146,7 +146,6 @@
   <section id="tab-monthly" class="hidden">
     <div class="card">
       <h2>Monthly Report — Salary Calc Ready</h2>
-      <p class="muted-small">Salaries are stored only in the "Targets" tab of your Google Sheet, never in this app's code. Fill them in there once; this report reads them live. Target = Monthly Salary × 40 (fixed, not affected by attendance). Payable Salary = Monthly Salary × (weighted present days ÷ total days marked that month).</p>
       <label for="monthPicker">Month</label>
       <input type="month" id="monthPicker" onchange="loadMonthlyReport()">
       <button class="secondary" onclick="loadMonthlyReport()" style="margin-bottom:14px;">Refresh</button>
