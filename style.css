@@ -300,6 +300,11 @@ button.whatsapp:active { background: #1EB955; }
   -webkit-overflow-scrolling: touch;
 }
 
+/* Monthly report has 8 columns — allow horizontal scroll on mobile */
+.table-wrap.table-scroll {
+  overflow-x: auto;
+}
+
 table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
 
 th {
@@ -312,9 +317,10 @@ th {
   color: var(--steel);
   background: var(--steel-tint);
   font-weight: 700;
+  white-space: nowrap;
 }
 
-td { padding: 10px 11px; border-bottom: 1px solid var(--line); font-family: var(--font-mono); }
+td { padding: 10px 11px; border-bottom: 1px solid var(--line); font-family: var(--font-mono); white-space: nowrap; }
 td:first-child { font-family: var(--font-body); font-weight: 500; }
 tr:last-child td { border-bottom: none; }
 
