@@ -259,60 +259,36 @@ function copySummary() {
 }
 
 // ---------- INVOICES: BUSY HTML IMPORT ----------
-// BUSY's "Bills Receivable" HTML export is a real <table>, which is far more
-// reliable to parse than its PDF export (PDF text often loses column
-// alignment). We match header cells loosely against a few known aliases.
-const COLUMN_ALIASES = {
-  invoiceNo: ["billno", "billno.", "voucherno", "refno", "invoiceno", "docno"],
-  party: ["partyname", "party", "accountname", "name", "customername"],
-  amount: ["pendingamount", "balance", "amount", "billamount", "netamount", "outstandingamount"],
-  invoiceDate: ["billdate", "vchdate", "voucherdate", "invoicedate", "date"]
-};
+// BUSY exports are UTF-16 LE encoded, fixed-width <pre> text inside HTML.
+// The per-salesperson file has "Salesman : HETVI" in the header — we read
+// that and tag every invoice with the salesperson name automatically.
+// For the ALL file (no salesman filter), salesperson is left blank.
 
-function normalizeHeader(h) {
-  return String(h || "").toLowerCase().replace(/[\s.]/g, "");
-}
+function parseBusyHtmlReport(htmlText) {
+  // Strip all HTML tags, decode &nbsp; to spaces
+  const plain = htmlText.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ');
 
-function parseBusyDate(raw) {
-  const s = String(raw).trim();
-  const m = s.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{2,4})$/);
-  if (m) {
-    let [, d, mo, y] = m;
-    if (y.length === 2) y = "20" + y;
-    return `${y}-${mo.padStart(2, "0")}-${d.padStart(2, "0")}`;
+  // Detect salesman from "Salesman : HETVI" line in header
+  const salesmanMatch = plain.match(/Salesman\s*:\s*([A-Z][A-Za-z]+)/);
+  const salesman = salesmanMatch ? salesmanMatch[1].trim() : null;
+
+  // Parse fixed-width data rows.
+  // Format: AccountName(~30) Date(DD-MM-YYYY) Type(Sale/Rcpt/Pymt) RefNo Amount PenAmt Due DueDate Days
+  const invoices = [];
+  const lineRe = /([A-Z0-9][^\n]{22,32}?)\s{2,}(\d{2}-\d{2}-\d{4})\s+(Sale|Rcpt|Pymt)\s+(\w+\/\w+)\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+[YN]\s+[\d\-]+\s+(-?\d+|-{1,4})/g;
+  let m;
+  while ((m = lineRe.exec(plain)) !== null) {
+    if (m[3] !== 'Sale') continue; // skip Pymt, Rcpt
+    const [d, mo, y] = m[2].split('-');
+    invoices.push({
+      invoiceNo:   m[4].trim(),
+      party:       m[1].trim(),
+      amount:      parseFloat(m[6].replace(/,/g, '')) || 0,
+      invoiceDate: `${y}-${mo}-${d}`,
+      salesperson: salesman || ''
+    });
   }
-  return s;
-}
-
-function findColumnIndex(headers, aliasKey) {
-  const normalized = headers.map(normalizeHeader);
-  const aliases = COLUMN_ALIASES[aliasKey];
-  for (let i = 0; i < normalized.length; i++) {
-    if (aliases.includes(normalized[i])) return i;
-  }
-  return -1;
-}
-
-function parseBusyHtmlTable(htmlText) {
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(htmlText, "text/html");
-  const tables = Array.from(doc.querySelectorAll("table"));
-  if (!tables.length) return null;
-
-  // Pick the largest table on the page (BUSY exports sometimes wrap the
-  // report table inside outer layout tables).
-  let best = tables[0];
-  let bestRowCount = 0;
-  tables.forEach(t => {
-    const count = t.querySelectorAll("tr").length;
-    if (count > bestRowCount) { bestRowCount = count; best = t; }
-  });
-
-  const rows = Array.from(best.querySelectorAll("tr")).map(tr =>
-    Array.from(tr.querySelectorAll("td,th")).map(td => td.textContent.trim())
-  ).filter(r => r.some(c => c !== ""));
-
-  return rows;
+  return { salesman, invoices };
 }
 
 async function importHtml() {
@@ -328,65 +304,23 @@ async function importHtml() {
 
   const file = fileInput.files[0];
   const text = await file.text();
-  const rows = parseBusyHtmlTable(text);
-
-  if (!rows || rows.length < 2) {
-    msgEl.classList.add("error");
-    msgEl.textContent = "Couldn't find a data table in that file.";
-    return;
-  }
-
-  // Find the header row: the first row where we can match at least the
-  // invoice number and amount columns (BUSY HTML exports sometimes have a
-  // title row above the real header row).
-  let headerRowIdx = -1, idx = null;
-  for (let i = 0; i < Math.min(rows.length, 5); i++) {
-    const candidate = {
-      invoiceNo: findColumnIndex(rows[i], "invoiceNo"),
-      party: findColumnIndex(rows[i], "party"),
-      amount: findColumnIndex(rows[i], "amount"),
-      invoiceDate: findColumnIndex(rows[i], "invoiceDate")
-    };
-    if (candidate.invoiceNo !== -1 && candidate.amount !== -1) {
-      headerRowIdx = i;
-      idx = candidate;
-      break;
-    }
-  }
-
-  if (headerRowIdx === -1) {
-    msgEl.classList.add("error");
-    msgEl.textContent = "Couldn't recognize the column headers in this file. Send Claude the header row text so the matching can be updated.";
-    return;
-  }
-
-  const missing = Object.keys(idx).filter(k => idx[k] === -1);
-  if (missing.length) {
-    msgEl.classList.add("error");
-    msgEl.textContent = `Couldn't find a column for: ${missing.join(", ")}. Send Claude the header row so it can be added.`;
-    return;
-  }
-
-  const dataRows = rows.slice(headerRowIdx + 1);
-  const invoices = dataRows.map(r => ({
-    invoiceNo: r[idx.invoiceNo],
-    party: r[idx.party],
-    amount: (r[idx.amount] || "").replace(/[^0-9.\-]/g, ""),
-    invoiceDate: parseBusyDate(r[idx.invoiceDate])
-  })).filter(inv => inv.invoiceNo && inv.invoiceNo.trim() !== "" && inv.amount !== "");
+  const { salesman, invoices } = parseBusyHtmlReport(text);
 
   if (!invoices.length) {
     msgEl.classList.add("error");
-    msgEl.textContent = "Found the table but no usable invoice rows in it. Check the exported file.";
+    msgEl.textContent = "No Sale entries found. Make sure you exported with Type of Entries: Pending and the file is the BUSY HTML Bills Receivable report.";
     return;
   }
 
-  msgEl.textContent = "";
-  showLoadingMsg("importMsg", `Importing ${invoices.length} rows...`);
+  const spLabel = salesman ? `for ${salesman}` : "(ALL — salesperson not tagged)";
+  showLoadingMsg("importMsg", `Importing ${invoices.length} invoices ${spLabel}...`);
 
   try {
     const result = await apiPost({ action: "bulkAddInvoices", invoices });
-    showResultMsg("importMsg", `Imported ${result.added} new invoice(s). Skipped ${result.skipped} already on file (matched by invoice number).`, true);
+    showResultMsg("importMsg",
+      `✓ Imported ${result.added} invoice(s) ${spLabel}. ${result.skipped} already on file (skipped by invoice number).`,
+      true
+    );
     fileInput.value = "";
     loadInvoices();
   } catch (err) {
@@ -394,7 +328,7 @@ async function importHtml() {
   }
 }
 
-// ---------- INVOICES: manual + list ----------
+
 async function addInvoice() {
   const invoiceNo = document.getElementById("invNo").value.trim();
   const party = document.getElementById("invParty").value.trim();
@@ -446,6 +380,7 @@ async function loadInvoices() {
       <tr>
         <td>${inv.invoiceNo}</td>
         <td>${inv.party}</td>
+        <td>${inv.salesperson ? `<span class="badge warn" style="font-size:10px;">${inv.salesperson}</span>` : '<span style="color:var(--muted);font-size:11px;">—</span>'}</td>
         <td style="text-align:right;">₹${Number(inv.amount).toLocaleString('en-IN')}</td>
         <td><span class="badge ${badgeClass}">${days} days</span></td>
         <td><button class="secondary" style="padding:5px 10px;font-size:11px;" onclick="clearInvoice('${inv.invoiceNo}')">Mark Cleared</button></td>
@@ -467,6 +402,7 @@ async function loadMonthlyReport() {
   const month = document.getElementById("monthPicker").value || currentMonthStr();
   showLoadingMsg("monthlyMsg", "Loading report...");
   document.getElementById("monthlyMsg").classList.remove("hidden");
+  document.getElementById("monthlyCards").innerHTML = "";
 
   const data = await apiGet("getMonthlyReport", { month });
   currentMonthlyRows = data.rows || [];
@@ -474,49 +410,104 @@ async function loadMonthlyReport() {
 
   document.getElementById("monthlyMsg").classList.add("hidden");
 
-  const tbody = document.querySelector("#monthlyTable tbody");
-  tbody.innerHTML = "";
+  const container = document.getElementById("monthlyCards");
 
   if (!currentMonthlyRows.length) {
-    tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:20px;">No data for this month yet.</td></tr>`;
+    container.innerHTML = `<p style="color:var(--muted);text-align:center;padding:20px 0;">No data for this month yet.</p>`;
     return;
   }
 
   currentMonthlyRows.forEach(r => {
-    // Achievement badge
-    let achClass = "danger";
-    if (r.achievedPct === null) achClass = "warn";
-    else if (r.achievedPct >= 150) achClass = "ok";
-    else if (r.achievedPct >= 100) achClass = "ok";
-    const pctLabel = r.achievedPct === null ? "—" : `${r.achievedPct}%`;
+    const pct = r.achievedPct;
+    const pctLabel = pct === null ? "—" : `${pct}%`;
+    let pctClass = "danger";
+    if (pct === null) pctClass = "warn";
+    else if (pct >= 100) pctClass = "ok";
+    else if (pct >= 75) pctClass = "warn";
 
-    // Increment status badge
-    let incClass = "warn";
-    let incIcon = "";
-    if (r.incrementFlag === "phase1_eligible" || r.incrementFlag === "phase2_eligible") {
-      incClass = "ok"; incIcon = "🔔 ";
-    } else if (r.incrementFlag === "phase2_confirmed") {
-      incClass = "ok"; incIcon = "✓ ";
-    } else if (r.incrementFlag === "frozen") {
-      incClass = "danger"; incIcon = "❄ ";
-    }
+    // Clawback row — only show if non-zero
+    const clawbackRow = r.clawback > 0 ? `
+      <div class="stat-item" style="background:var(--red-tint);border-radius:6px;padding:4px 8px;">
+        <span class="stat-item-label" style="color:var(--danger);">Clawback (60+ day overdue)</span>
+        <span class="stat-item-val" style="color:var(--danger);">−₹${r.clawback.toLocaleString('en-IN')}</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-item-label">Net Achieved (after clawback)</span>
+        <span class="stat-item-val">₹${r.netAchieved.toLocaleString('en-IN')}</span>
+      </div>` : '';
 
+    // Bonus
+    const bonusLabel = r.bonus > 0
+      ? `₹${r.bonus.toLocaleString('en-IN')} <span style="color:var(--muted);font-size:11px;">(${r.bonusTier})</span>`
+      : `<span style="color:var(--muted);">—</span>`;
+
+    // Attendance
     const attLabel = r.attendanceMarked
-      ? `${r.daysPresent}P ${r.daysHalf}H ${r.daysLeave}L`
-      : `<span class="badge warn">?</span>`;
+      ? `${r.daysPresent} Present · ${r.daysHalf} Half · ${r.daysLeave} Leave`
+      : `<span style="color:var(--warn);">Not marked yet</span>`;
 
-    tbody.innerHTML += `<tr>
-      <td><strong>${r.salesperson}</strong></td>
-      <td style="text-align:right;">₹${r.monthlySalary.toLocaleString('en-IN')}</td>
-      <td style="text-align:right;">₹${r.target.toLocaleString('en-IN')}</td>
-      <td style="text-align:right;">₹${r.grossAchieved.toLocaleString('en-IN')}</td>
-      <td><span class="badge ${achClass}">${pctLabel}</span></td>
-      <td>${r.bonusTier}</td>
-      <td style="text-align:right;color:var(--ok);font-weight:600;">₹${r.bonus.toLocaleString('en-IN')}</td>
-      <td>${attLabel}</td>
-      <td style="text-align:right;font-weight:700;">₹${r.totalPayable.toLocaleString('en-IN')}</td>
-      <td><span class="badge ${incClass}" style="font-size:10px;white-space:nowrap;">${incIcon}${r.incrementStatus}</span></td>
-    </tr>`;
+    // Increment status
+    let incClass = "warn", incIcon = "";
+    if (r.incrementFlag === "phase1_eligible" || r.incrementFlag === "phase2_eligible") { incClass = "ok"; incIcon = "🔔 "; }
+    else if (r.incrementFlag === "phase2_confirmed") { incClass = "ok"; incIcon = "✓ "; }
+    else if (r.incrementFlag === "frozen") { incClass = "danger"; incIcon = "❄ "; }
+
+    // Progress bar for rolling window (out of 5)
+    const hits = r.hitsInWindow || 0;
+    const windowSize = r.windowSize || 0;
+    const progressDots = Array.from({ length: 5 }, (_, i) => {
+      const filled = i < hits;
+      return `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:3px;background:${filled ? 'var(--ok)' : 'var(--line)'};" title="${filled ? 'Hit target' : 'Missed or no data'}"></span>`;
+    }).join("");
+
+    container.innerHTML += `
+      <div class="person-card">
+        <div class="person-card-header">
+          <span class="person-name">${r.salesperson}</span>
+          <span class="badge ${pctClass} person-pct">${pctLabel}</span>
+        </div>
+
+        <div class="person-stats">
+          <div class="stat-item">
+            <span class="stat-item-label">Monthly Salary</span>
+            <span class="stat-item-val">₹${r.monthlySalary.toLocaleString('en-IN')}</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-item-label">Target (×40)</span>
+            <span class="stat-item-val">₹${r.target.toLocaleString('en-IN')}</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-item-label">Gross Achieved</span>
+            <span class="stat-item-val">₹${r.grossAchieved.toLocaleString('en-IN')}</span>
+          </div>
+          ${clawbackRow}
+          <div class="stat-item">
+            <span class="stat-item-label">Bonus</span>
+            <span class="stat-item-val">${bonusLabel}</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-item-label">Attendance</span>
+            <span class="stat-item-val" style="font-family:var(--font-body);font-size:12px;">${attLabel}</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-item-label">Prorated Salary</span>
+            <span class="stat-item-val">₹${r.proratedSalary.toLocaleString('en-IN')}</span>
+          </div>
+        </div>
+
+        <div class="person-payable">
+          <span>Total Payable</span>
+          <span class="payable-amount">₹${r.totalPayable.toLocaleString('en-IN')}</span>
+        </div>
+
+        <div class="person-increment">
+          <div style="margin-bottom:5px;">
+            <span style="font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:0.07em;">Rolling window (last 5 months)</span>
+            <span style="float:right;">${progressDots}</span>
+          </div>
+          <span class="badge ${incClass}" style="font-size:11px;">${incIcon}${r.incrementStatus}</span>
+        </div>
+      </div>`;
   });
 
   // Clawback notice
@@ -524,15 +515,13 @@ async function loadMonthlyReport() {
   if (data.clawbackTotal > 0) {
     clawEl.classList.remove("hidden");
     document.getElementById("clawbackAmount").textContent = `₹${data.clawbackTotal.toLocaleString('en-IN')}`;
-    const clawList = document.getElementById("clawbackList");
-    clawList.innerHTML = (data.clawbackInvoices || []).map(inv =>
-      `<li>${inv.invoiceNo} — ${inv.party} — ₹${Number(inv.amount).toLocaleString('en-IN')} (${inv.daysOut} days)</li>`
+    document.getElementById("clawbackList").innerHTML = (data.clawbackInvoices || []).map(inv =>
+      `<li>${inv.invoiceNo} · ${inv.party} · ₹${Number(inv.amount).toLocaleString('en-IN')} · ${inv.daysOut} days</li>`
     ).join("");
   } else {
     clawEl.classList.add("hidden");
   }
 
-  // Show flagged increments
   renderIncrementAlerts(currentMonthlyRows, month);
 }
 
