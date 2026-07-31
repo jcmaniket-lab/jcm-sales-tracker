@@ -135,7 +135,7 @@
       <p class="muted-small">Auto-flags: <span class="badge ok">0-30 days</span> &nbsp;<span class="badge warn">31-60 days</span> &nbsp;<span class="badge danger">60+ days (overdue)</span></p>
       <div class="table-wrap">
         <table id="invTable">
-          <thead><tr><th>Invoice No.</th><th>Party</th><th style="text-align:right;">Amount (₹)</th><th>Days</th><th></th></tr></thead>
+          <thead><tr><th>Invoice No.</th><th>Party</th><th>Salesperson</th><th style="text-align:right;">Amount (₹)</th><th>Days</th><th></th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
@@ -145,46 +145,24 @@
   <!-- MONTHLY REPORT TAB -->
   <section id="tab-monthly" class="hidden">
 
-    <!-- Increment alerts — only shown when action is needed -->
     <div id="incrementAlerts" class="hidden"></div>
 
-    <!-- Clawback notice -->
     <div id="clawbackNotice" class="card hidden" style="border-left-color:var(--jcm-red);">
-      <h2 style="color:var(--jcm-red);">⚠ Clawback Deductions This Month</h2>
-      <p class="muted-small">The following invoices are unpaid beyond 60 days per policy Section 2.4. Deduct from the relevant salesperson's net achieved total before finalising bonus. These are not auto-deducted since salesperson is not yet tagged per invoice — accounts to allocate manually.</p>
-      <p><strong>Total overdue (60+ days): </strong><span id="clawbackAmount" style="color:var(--jcm-red);font-family:var(--font-mono);"></span></p>
-      <ul id="clawbackList" style="font-size:13px;margin:8px 0 0;padding-left:18px;font-family:var(--font-mono);line-height:1.8;"></ul>
+      <h2 style="color:var(--jcm-red);">⚠ Clawback This Month</h2>
+      <p class="muted-small">Unpaid invoices beyond 60 days per policy §2.4. Deduct from the relevant salesperson's net achieved total before finalising bonus.</p>
+      <p style="font-family:var(--font-mono);font-weight:700;color:var(--jcm-red);">Total overdue: <span id="clawbackAmount"></span></p>
+      <ul id="clawbackList" style="font-size:12px;margin:8px 0 0;padding-left:18px;font-family:var(--font-mono);line-height:1.9;"></ul>
     </div>
 
     <div class="card">
       <h2>Monthly Salary Calc</h2>
-      <p class="muted-small">Target, 10%/15% bonus tiers, attendance-prorated base, and two-phase increment tracking — all per the Sales Incentive Policy.</p>
+      <p class="muted-small">Per Sales Incentive Policy v2.1 — Salary × 40 target, 10%/15% bonus tiers, attendance-prorated base, two-phase increment tracking.</p>
       <label for="monthPicker">Month</label>
       <input type="month" id="monthPicker" onchange="loadMonthlyReport()">
       <button class="secondary" onclick="loadMonthlyReport()" style="margin-bottom:14px;">Refresh</button>
       <p id="monthlyMsg" class="msg hidden"></p>
-
-      <div class="table-wrap table-scroll">
-        <table id="monthlyTable" style="min-width:900px;">
-          <thead>
-            <tr>
-              <th>Salesperson</th>
-              <th style="text-align:right;">Salary</th>
-              <th style="text-align:right;">Target (×40)</th>
-              <th style="text-align:right;">Achieved</th>
-              <th>%</th>
-              <th>Bonus Tier</th>
-              <th style="text-align:right;">Bonus</th>
-              <th>Attendance</th>
-              <th style="text-align:right;">Total Payable</th>
-              <th>Increment Status</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
-
-      <div class="actions" style="margin-top:16px;">
+      <div id="monthlyCards"></div>
+      <div class="actions" style="margin-top:8px;">
         <button class="primary" onclick="downloadMonthlyCsv()">
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 1v9m0 0L4.5 6.5M8 10l3.5-3.5M2 12v2h12v-2" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
           Download CSV
@@ -192,31 +170,20 @@
       </div>
     </div>
 
-    <!-- Policy quick reference -->
     <div class="card" style="border-left-color:var(--steel);">
       <h2>Policy Quick Reference</h2>
-      <h3>Bonus Tiers (Section 3.1)</h3>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Achievement</th><th>Bonus</th></tr></thead>
-          <tbody>
-            <tr><td>Below 100%</td><td><span class="badge danger">No bonus</span></td></tr>
-            <tr><td>100% – 149%</td><td><span class="badge ok">10% of monthly salary</span></td></tr>
-            <tr><td>150% and above</td><td><span class="badge ok">15% of monthly salary</span></td></tr>
-          </tbody>
-        </table>
+      <h3>Bonus Tiers (§3.1)</h3>
+      <div class="policy-grid">
+        <div class="policy-row"><span>Below 100%</span><span class="badge danger">No bonus</span></div>
+        <div class="policy-row"><span>100% – 149%</span><span class="badge ok">10% of salary</span></div>
+        <div class="policy-row"><span>150% and above</span><span class="badge ok">15% of salary</span></div>
       </div>
-      <h3>Two-Phase Increment (Section 6.2)</h3>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Phase</th><th>Trigger</th><th>What happens</th></tr></thead>
-          <tbody>
-            <tr><td><span class="badge warn">Phase 1</span></td><td>4 out of 5 months at 100%+</td><td>50% of increment applied immediately</td></tr>
-            <tr><td><span class="badge ok">Phase 2</span></td><td>3 more months at 100%+ after Phase 1</td><td>Remaining 50% — increment fully confirmed</td></tr>
-          </tbody>
-        </table>
+      <h3>Two-Phase Increment (§6.2)</h3>
+      <div class="policy-grid">
+        <div class="policy-row"><span class="badge warn">Phase 1</span><span>4/5 months at 100%+ → 50% increment now</span></div>
+        <div class="policy-row"><span class="badge ok">Phase 2</span><span>3 more months → remaining 50% confirmed</span></div>
       </div>
-      <p class="muted-small" style="margin-top:10px;">If performance drops after Phase 1: bonus stops immediately, Phase 2 frozen. Base salary is never reduced. Clawback: any invoice unpaid beyond 60 days is deducted from that month's net achieved total.</p>
+      <p class="muted-small" style="margin-top:10px;">Performance drops after Phase 1 → bonus stops, Phase 2 frozen. Base salary never reduced. Clawback: invoices unpaid 60+ days deducted from net achieved.</p>
     </div>
   </section>
 
