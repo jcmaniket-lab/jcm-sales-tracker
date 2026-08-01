@@ -191,14 +191,30 @@ async function saveEntry() {
 async function loadDashboard() {
   const date = document.getElementById("dashDate").value || todayStr();
   const data = await apiGet("getDaily", { date });
+  const dailyTargets = data.dailyTargets || {};
 
   const empBody = document.querySelector("#empTable tbody");
   empBody.innerHTML = "";
   let empTotal = 0;
+
   SALESPEOPLE.forEach(name => {
-    const amt = Number(data.salespersonSales && data.salespersonSales[name] || 0);
+    const amt     = Number(data.salespersonSales && data.salespersonSales[name] || 0);
+    const target  = dailyTargets[name] || 0;
+    const hit     = target > 0 && amt >= target;
+    const miss    = target > 0 && amt < target;
+    const rowBg   = hit ? "var(--ok-tint)" : miss ? "var(--red-tint)" : "";
+    const amtColor= hit ? "var(--ok)"      : miss ? "var(--danger)"   : "inherit";
+    const statusDot = target > 0
+      ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${hit ? 'var(--ok)' : 'var(--danger)'};margin-left:6px;vertical-align:middle;" title="${hit ? 'Hit daily target' : 'Below daily target'}"></span>`
+      : "";
+    const targetLabel = target > 0
+      ? `<span style="color:var(--muted);font-size:10.5px;font-family:var(--font-body);"> / ₹${target.toLocaleString('en-IN')}</span>`
+      : "";
     empTotal += amt;
-    empBody.innerHTML += `<tr><td>${name}</td><td style="text-align:right;">₹${amt.toLocaleString('en-IN')}</td></tr>`;
+    empBody.innerHTML += `<tr style="background:${rowBg}">
+      <td>${name}${statusDot}</td>
+      <td style="text-align:right;color:${amtColor};font-weight:${hit ? '700' : '400'};">₹${amt.toLocaleString('en-IN')}${targetLabel}</td>
+    </tr>`;
   });
   empBody.innerHTML += `<tr class="total-row"><td>Total</td><td style="text-align:right;">₹${empTotal.toLocaleString('en-IN')}</td></tr>`;
 
@@ -473,7 +489,7 @@ async function loadMonthlyReport() {
             <span class="stat-item-val">₹${r.monthlySalary.toLocaleString('en-IN')}</span>
           </div>
           <div class="stat-item">
-            <span class="stat-item-label">Target (×40)</span>
+            <span class="stat-item-label">Target</span>
             <span class="stat-item-val">₹${r.target.toLocaleString('en-IN')}</span>
           </div>
           <div class="stat-item">
@@ -584,7 +600,7 @@ async function confirmIncrements(phase, month) {
 
 function downloadMonthlyCsv() {
   const month = document.getElementById("monthPicker").value || currentMonthStr();
-  let csv = "Salesperson,Monthly Salary,Target (x40),Gross Achieved,Achievement %,Bonus Tier,Bonus Amount,Days Present,Days Half,Days Leave,Prorated Salary,Total Payable,Increment Status\n";
+  let csv = "Salesperson,Monthly Salary,Target,Gross Achieved,Achievement %,Bonus Tier,Bonus Amount,Days Present,Days Half,Days Leave,Prorated Salary,Total Payable,Increment Status\n";
   currentMonthlyRows.forEach(r => {
     csv += [
       r.salesperson, r.monthlySalary, r.target, r.grossAchieved,
