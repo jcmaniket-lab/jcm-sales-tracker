@@ -4,6 +4,15 @@
 // in sessionStorage for this browser tab, never in a file.
 const SALESPEOPLE = ["Hetvi", "Sakshi", "Jayu", "Ragini", "Arvind", "Himanshu", "Shoaib"];
 const BRANCHES = ["Kim GIDC", "Udhna GIDC"];
+
+const BRANCH_MEMBERS = {
+  "Kim GIDC":   ["Arvind", "Jayu", "Sakshi"],
+  "Udhna GIDC": ["Ragini", "Hetvi", "Himanshu", "Shoaib"]
+};
+
+function isSunday(dateStr) {
+  return new Date(dateStr).getDay() === 0;
+}
 const ATTENDANCE_STATUSES = ["Present", "Half", "Leave"];
 const OWNER_PHONE = ""; // optional: owner's WhatsApp number with country code, e.g. "919876543210". Leave blank to open the WhatsApp contact picker instead.
 
@@ -190,48 +199,74 @@ async function saveEntry() {
 // ---------- DASHBOARD ----------
 async function loadDashboard() {
   const date = document.getElementById("dashDate").value || todayStr();
+  const sunday = isSunday(date);
   const data = await apiGet("getDaily", { date });
   const dailyTargets = data.dailyTargets || {};
 
-  const empBody = document.querySelector("#empTable tbody");
-  empBody.innerHTML = "";
+  // Stat cards — overall totals
   let empTotal = 0;
+  SALESPEOPLE.forEach(n => empTotal += Number(data.salespersonSales && data.salespersonSales[n] || 0));
+  let brTotal = 0;
+  BRANCHES.forEach(n => brTotal += Number(data.branchSales && data.branchSales[n] || 0));
+  document.getElementById("statEmpTotal").textContent = `₹${empTotal.toLocaleString("en-IN")}`;
+  document.getElementById("statBranchTotal").textContent = `₹${brTotal.toLocaleString("en-IN")}`;
 
-  SALESPEOPLE.forEach(name => {
-    const amt     = Number(data.salespersonSales && data.salespersonSales[name] || 0);
-    const target  = dailyTargets[name] || 0;
-    const hit     = target > 0 && amt >= target;
-    const miss    = target > 0 && amt < target;
-    const rowBg   = hit ? "var(--ok-tint)" : miss ? "var(--red-tint)" : "";
-    const amtColor= hit ? "var(--ok)"      : miss ? "var(--danger)"   : "inherit";
-    const statusDot = target > 0
-      ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${hit ? 'var(--ok)' : 'var(--danger)'};margin-left:6px;vertical-align:middle;" title="${hit ? 'Hit daily target' : 'Below daily target'}"></span>`
-      : "";
-    const targetLabel = target > 0
-      ? `<span style="color:var(--muted);font-size:10.5px;font-family:var(--font-body);"> / ₹${target.toLocaleString('en-IN')}</span>`
-      : "";
-    empTotal += amt;
-    empBody.innerHTML += `<tr style="background:${rowBg}">
-      <td>${name}${statusDot}</td>
-      <td style="text-align:right;color:${amtColor};font-weight:${hit ? '700' : '400'};">₹${amt.toLocaleString('en-IN')}${targetLabel}</td>
-    </tr>`;
+  // Employee tables — split by branch
+  const empContainer = document.getElementById("empTablesContainer");
+  empContainer.innerHTML = "";
+
+  Object.keys(BRANCH_MEMBERS).forEach(branch => {
+    const members = BRANCH_MEMBERS[branch];
+    let branchEmpTotal = 0;
+    let rowsHtml = "";
+
+    members.forEach(name => {
+      const amt    = Number(data.salespersonSales && data.salespersonSales[name] || 0);
+      branchEmpTotal += amt;
+      const target = dailyTargets[name] || 0;
+      const hit    = !sunday && target > 0 && amt >= target;
+      const miss   = !sunday && target > 0 && amt < target;
+      const rowBg    = hit ? "var(--ok-tint)" : miss ? "var(--red-tint)" : "";
+      const amtColor = hit ? "var(--ok)"      : miss ? "var(--danger)"   : "inherit";
+      const dot = target > 0
+        ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;margin-left:6px;vertical-align:middle;background:${sunday ? "var(--muted)" : hit ? "var(--ok)" : "var(--danger)"}" title="${sunday ? "Sunday — bonus day" : hit ? "Hit daily target" : "Below daily target"}"></span>`
+        : "";
+      const targetLabel = !sunday && target > 0
+        ? `<span style="color:var(--muted);font-size:10.5px;font-family:var(--font-body);"> / ₹${target.toLocaleString("en-IN")}</span>`
+        : sunday && target > 0
+          ? `<span style="color:var(--muted);font-size:10px;font-family:var(--font-body);"> bonus day</span>`
+          : "";
+      rowsHtml += `<tr style="background:${sunday ? "" : rowBg}">
+        <td>${name}${dot}</td>
+        <td style="text-align:right;color:${sunday ? "inherit" : amtColor};font-weight:${hit && !sunday ? "700" : "400"};">₹${amt.toLocaleString("en-IN")}${targetLabel}</td>
+      </tr>`;
+    });
+    rowsHtml += `<tr class="total-row"><td>Total</td><td style="text-align:right;">₹${branchEmpTotal.toLocaleString("en-IN")}</td></tr>`;
+
+    empContainer.innerHTML += `
+      <div style="margin-bottom:18px;">
+        <h3>${branch}</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Salesperson</th><th style="text-align:right;">Sales${sunday ? " ☀ Sunday" : ""}</th></tr></thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+        </div>
+      </div>`;
   });
-  empBody.innerHTML += `<tr class="total-row"><td>Total</td><td style="text-align:right;">₹${empTotal.toLocaleString('en-IN')}</td></tr>`;
 
+  // Branch totals table
   const brBody = document.querySelector("#branchTable tbody");
   brBody.innerHTML = "";
-  let brTotal = 0;
+  let brTotal2 = 0;
   BRANCHES.forEach(name => {
     const amt = Number(data.branchSales && data.branchSales[name] || 0);
-    brTotal += amt;
-    brBody.innerHTML += `<tr><td>${name}</td><td style="text-align:right;">₹${amt.toLocaleString('en-IN')}</td></tr>`;
+    brTotal2 += amt;
+    brBody.innerHTML += `<tr><td>${name}</td><td style="text-align:right;">₹${amt.toLocaleString("en-IN")}</td></tr>`;
   });
-  brBody.innerHTML += `<tr class="total-row"><td>Total</td><td style="text-align:right;">₹${brTotal.toLocaleString('en-IN')}</td></tr>`;
+  brBody.innerHTML += `<tr class="total-row"><td>Total</td><td style="text-align:right;">₹${brTotal2.toLocaleString("en-IN")}</td></tr>`;
 
-  document.getElementById("statEmpTotal").textContent = `₹${empTotal.toLocaleString('en-IN')}`;
-  document.getElementById("statBranchTotal").textContent = `₹${brTotal.toLocaleString('en-IN')}`;
-
-  buildWhatsAppSummary(date, data, empTotal, brTotal);
+  buildWhatsAppSummary(date, data, empTotal, brTotal2, sunday);
 }
 
 function formatDateReadable(dateStr) {
@@ -239,39 +274,65 @@ function formatDateReadable(dateStr) {
   return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
-let currentSummaryText = "";
+let currentSummaryByBranch = {};
 
-function buildWhatsAppSummary(date, data, empTotal, brTotal) {
-  let lines = [];
-  lines.push(`*JCM ENTERPRISE — DAILY SALES REPORT*`);
-  lines.push(`📅 ${formatDateReadable(date)}`);
-  lines.push(``);
-  lines.push(`*Employee Sales*`);
-  SALESPEOPLE.forEach(name => {
-    const amt = Number(data.salespersonSales && data.salespersonSales[name] || 0);
-    lines.push(`${name}: ₹${amt.toLocaleString('en-IN')}`);
+function buildWhatsAppSummary(date, data, empTotal, brTotal, sunday) {
+  const dateLabel = formatDateReadable(date);
+  const sundayNote = sunday ? "\n☀ Sunday — bonus orders, no target" : "";
+
+  currentSummaryByBranch = {};
+  Object.keys(BRANCH_MEMBERS).forEach(branch => {
+    const members = BRANCH_MEMBERS[branch];
+    let lines = [];
+    lines.push(`*JCM ENTERPRISE — ${branch.toUpperCase()}*`);
+    lines.push(`📅 ${dateLabel}${sundayNote}`);
+    lines.push(``);
+    let total = 0;
+    members.forEach(name => {
+      const amt = Number(data.salespersonSales && data.salespersonSales[name] || 0);
+      total += amt;
+      lines.push(`${name}: ₹${amt.toLocaleString("en-IN")}`);
+    });
+    lines.push(`*Total: ₹${total.toLocaleString("en-IN")}*`);
+    currentSummaryByBranch[branch] = lines.join("\n");
   });
-  lines.push(`*Total: ₹${empTotal.toLocaleString('en-IN')}*`);
-  lines.push(``);
-  lines.push(`*Branch Sales*`);
+
+  // Combined preview in the summary box
+  let allLines = [];
+  allLines.push(`*JCM ENTERPRISE — DAILY SALES REPORT*`);
+  allLines.push(`📅 ${dateLabel}${sundayNote}`);
+  Object.keys(BRANCH_MEMBERS).forEach(branch => {
+    allLines.push(``);
+    allLines.push(`*${branch}*`);
+    let total = 0;
+    BRANCH_MEMBERS[branch].forEach(name => {
+      const amt = Number(data.salespersonSales && data.salespersonSales[name] || 0);
+      total += amt;
+      allLines.push(`${name}: ₹${amt.toLocaleString("en-IN")}`);
+    });
+    allLines.push(`Total: ₹${total.toLocaleString("en-IN")}`);
+  });
+  allLines.push(``);
+  allLines.push(`*Branch Totals*`);
   BRANCHES.forEach(name => {
     const amt = Number(data.branchSales && data.branchSales[name] || 0);
-    lines.push(`${name}: ₹${amt.toLocaleString('en-IN')}`);
+    allLines.push(`${name}: ₹${amt.toLocaleString("en-IN")}`);
   });
-  lines.push(`*Total: ₹${brTotal.toLocaleString('en-IN')}*`);
-
-  currentSummaryText = lines.join("\n");
-  document.getElementById("waSummary").textContent = currentSummaryText;
+  allLines.push(`*Grand Total: ₹${brTotal.toLocaleString("en-IN")}*`);
+  document.getElementById("waSummary").textContent = allLines.join("\n");
 }
 
-function shareWhatsApp() {
-  const text = encodeURIComponent(currentSummaryText);
+function shareWhatsApp(branch) {
+  const text = branch
+    ? encodeURIComponent(currentSummaryByBranch[branch] || "")
+    : encodeURIComponent(Object.values(currentSummaryByBranch).join("\n\n"));
   const url = OWNER_PHONE ? `https://wa.me/${OWNER_PHONE}?text=${text}` : `https://wa.me/?text=${text}`;
   window.open(url, "_blank");
 }
 
 function copySummary() {
-  navigator.clipboard.writeText(currentSummaryText).then(() => alert("Report copied to clipboard."));
+  const text = Object.values(currentSummaryByBranch).join("\n\n");
+  navigator.clipboard.writeText(text).then(() => alert("Full report copied to clipboard."));
 }
 
 // ---------- INVOICES: BUSY HTML IMPORT ----------
