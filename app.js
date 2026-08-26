@@ -342,26 +342,43 @@ function copySummary() {
 // For the ALL file (no salesman filter), salesperson is left blank.
 
 function parseBusyHtmlReport(htmlText) {
-  // Strip all HTML tags, decode &nbsp; to spaces
+  // BUSY exports are fixed-width <pre> text inside UTF-16 HTML.
+  // Entry types: Sale = current year sale, OpBl = opening balance (old outstanding).
+  // Both represent money owed — we import both. Skip: Pymt, Rcpt, Jrnl.
+  // Per-salesperson files have "Salesman : HETVI" in header for auto-tagging.
+
   const plain = htmlText.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ');
 
-  // Detect salesman from "Salesman : HETVI" line in header
-  const salesmanMatch = plain.match(/Salesman\s*:\s*([A-Z][A-Za-z]+)/);
-  const salesman = salesmanMatch ? salesmanMatch[1].trim() : null;
+  // Detect salesman from header — handles ALL CAPS (HETVI) and mixed case (Ragini singh, Shoheb)
+  const salesmanMatch = plain.match(/Salesman\s*[:\-]\s*([A-Za-z][A-Za-z\s]+?)\s{3,}/);
+  let salesman = salesmanMatch ? salesmanMatch[1].trim().split(/\s+/)[0].toUpperCase() : null;
+  // Map BUSY spellings to the internal canonical names used in the app
+  const SALESMAN_MAP = {
+    'RAGINI': 'Ragini', 'HETVI': 'Hetvi', 'SAKSHI': 'Sakshi',
+    'JAYU': 'Jayu', 'ARVIND': 'Arvind', 'HIMANSHU': 'Himanshu',
+    'SHOAIB': 'Shoaib', 'SHOHEB': 'Shoaib'  // BUSY misspelling handled here
+  };
+  salesman = salesman ? (SALESMAN_MAP[salesman] || salesman) : null;
 
-  // Parse fixed-width data rows.
-  // Format: AccountName(~30) Date(DD-MM-YYYY) Type(Sale/Rcpt/Pymt) RefNo Amount PenAmt Due DueDate Days
   const invoices = [];
-  const lineRe = /([A-Z0-9][^\n]{22,32}?)\s{2,}(\d{2}-\d{2}-\d{4})\s+(Sale|Rcpt|Pymt)\s+(\w+\/\w+)\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+[YN]\s+[\d\-]+\s+(-?\d+|-{1,4})/g;
+  // Match both Sale (current year) and OpBl (old outstanding) rows — both are receivables.
+  // Skips Pymt, Rcpt, Jrnl entries which are not invoices.
+  const lineRe = /([A-Z0-9][^\n]{22,32}?)\s{2,}(\d{2}-\d{2}-\d{4})\s+(Sale|OpBl)\s+(\S+)\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+[YN]\s+[\d\-]+\s+(-?\d+|-{1,4})/g;
   let m;
   while ((m = lineRe.exec(plain)) !== null) {
-    if (m[3] !== 'Sale') continue; // skip Pymt, Rcpt
+    // Clean party names — page-total bleed-through adds leading digits/spaces
+    const party = m[1].trim().replace(/^[\d\s\-]+/, '').trim();
+    if (!party) continue;
+
     const [d, mo, y] = m[2].split('-');
+    const penAmt = parseFloat(m[6].replace(/,/g, '')) || 0;
+    if (penAmt <= 0) continue; // skip zero/negative balance rows
+
     invoices.push({
       invoiceNo:   m[4].trim(),
-      party:       m[1].trim(),
-      amount:      parseFloat(m[6].replace(/,/g, '')) || 0,
-      invoiceDate: `${y}-${mo}-${d}`,
+      party:       party,
+      amount:      penAmt,
+      invoiceDate: `${y}-${mo.padStart(2,'0')}-${d.padStart(2,'0')}`,
       salesperson: salesman || ''
     });
   }
