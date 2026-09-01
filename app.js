@@ -519,21 +519,25 @@ async function loadMonthlyReport() {
     else if (pct >= 100) pctClass = "ok";
     else if (pct >= 75) pctClass = "warn";
 
-    // Clawback row — only show if non-zero
-    const clawbackRow = r.clawback > 0 ? `
-      <div class="stat-item" style="background:var(--red-tint);border-radius:6px;padding:4px 8px;">
-        <span class="stat-item-label" style="color:var(--danger);">Clawback (60+ day overdue)</span>
-        <span class="stat-item-val" style="color:var(--danger);">−₹${r.clawback.toLocaleString('en-IN')}</span>
-      </div>
+    // Clawback — deducted from bonus only, shown clearly
+    // Only shows if there was a clawback this month (invoice raised in report month, now 60+ days unpaid)
+    const hasClawback = r.clawback > 0;
+    const clawbackRow = hasClawback ? `
       <div class="stat-item">
-        <span class="stat-item-label">Net Achieved (after clawback)</span>
-        <span class="stat-item-val">₹${r.netAchieved.toLocaleString('en-IN')}</span>
+        <span class="stat-item-label">Gross Bonus (${r.bonusTier})</span>
+        <span class="stat-item-val">₹${(r.grossBonus || 0).toLocaleString('en-IN')}</span>
+      </div>
+      <div class="stat-item" style="background:var(--red-tint);border-radius:6px;padding:4px 8px;">
+        <span class="stat-item-label" style="color:var(--danger);">Clawback from bonus (this month's invoices, 60+ days unpaid)</span>
+        <span class="stat-item-val" style="color:var(--danger);">−₹${r.clawback.toLocaleString('en-IN')}</span>
       </div>` : '';
 
-    // Bonus
-    const bonusLabel = r.bonus > 0
+    // Bonus after clawback (what's actually paid)
+    const bonusLabel = (r.bonus > 0 && !hasClawback)
       ? `₹${r.bonus.toLocaleString('en-IN')} <span style="color:var(--muted);font-size:11px;">(${r.bonusTier})</span>`
-      : `<span style="color:var(--muted);">—</span>`;
+      : hasClawback
+        ? `₹${r.bonus.toLocaleString('en-IN')} <span style="color:var(--muted);font-size:11px;">(after clawback)</span>`
+        : `<span style="color:var(--muted);">—</span>`;
 
     // Attendance
     const attLabel = r.attendanceMarked
@@ -576,7 +580,7 @@ async function loadMonthlyReport() {
           </div>
           ${clawbackRow}
           <div class="stat-item">
-            <span class="stat-item-label">Bonus</span>
+            <span class="stat-item-label">Bonus Payable</span>
             <span class="stat-item-val">${bonusLabel}</span>
           </div>
           <div class="stat-item">
