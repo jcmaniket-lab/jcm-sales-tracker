@@ -342,47 +342,97 @@ function copySummary() {
 // For the ALL file (no salesman filter), salesperson is left blank.
 
 function parseBusyHtmlReport(htmlText) {
-  // BUSY exports are fixed-width <pre> text inside UTF-16 HTML.
-  // Entry types: Sale = current year sale, OpBl = opening balance (old outstanding).
-  // Both represent money owed — we import both. Skip: Pymt, Rcpt, Jrnl.
-  // Per-salesperson files have "Salesman : HETVI" in header for auto-tagging.
+  // Handles two BUSY export formats:
+  // 1. Salesman-wise Receivable (Display > Outstanding Analysis > Salesman-wise Receivables)
+  //    One file, all salespeople, sections separated by "Salesman : NAME" headers.
+  //    Uses <Br> tags as line separators.
+  // 2. Bills Receivable filtered per salesperson (legacy, still supported)
 
-  const plain = htmlText.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ');
+  // Normalise: replace <Br> tags with newlines, strip all other HTML, decode &nbsp;
+  const plain = htmlText
+    .replace(/<[Bb][Rr]\s*\/?>/g, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ');
 
-  // Detect salesman from header — handles ALL CAPS (HETVI) and mixed case (Ragini singh, Shoheb)
-  const salesmanMatch = plain.match(/Salesman\s*[:\-]\s*([A-Za-z][A-Za-z\s]+?)\s{3,}/);
-  let salesman = salesmanMatch ? salesmanMatch[1].trim().split(/\s+/)[0].toUpperCase() : null;
-  // Map BUSY spellings to the internal canonical names used in the app
+  // SALESMAN_MAP: maps BUSY's salesman names (uppercased) to canonical app names.
+  // Longest-match wins (e.g. "RAGINI SINGH" matched before "RAGINI").
   const SALESMAN_MAP = {
-    'RAGINI': 'Ragini', 'HETVI': 'Hetvi', 'SAKSHI': 'Sakshi',
-    'JAYU': 'Jayu', 'ARVIND': 'Arvind', 'HIMANSHU': 'Himanshu',
-    'SHOAIB': 'Shoaib', 'SHOHEB': 'Shoaib'  // BUSY misspelling handled here
+    'ARVIND YADAV': 'Arvind',  'ARVIND': 'Arvind',
+    'HETVI': 'Hetvi',
+    'HIMANSHU': 'Himanshu',
+    'JAYU RAJPUT': 'Jayu',     'JAYU': 'Jayu',
+    'RAGINI SINGH': 'Ragini',  'RAGINI': 'Ragini',
+    'SAKSHI SHARMA': 'Sakshi', 'SAKSHI': 'Sakshi',
+    'SHOHEB': 'Shoaib',        'SHOAIB': 'Shoaib'
   };
-  salesman = salesman ? (SALESMAN_MAP[salesman] || salesman) : null;
+  const MAP_KEYS = Object.keys(SALESMAN_MAP).sort((a, b) => b.length - a.length);
+
+  function matchSalesman(raw) {
+    const u = raw.trim().toUpperCase();
+    for (const key of MAP_KEYS) { if (u.startsWith(key)) return SALESMAN_MAP[key]; }
+    return null;
+  }
+
+  // Detect file type
+  const isSalesmanWise = /SALESMAN-WISE RECEIVABLE/i.test(plain);
 
   const invoices = [];
-  // Match both Sale (current year) and OpBl (old outstanding) rows — both are receivables.
-  // Skips Pymt, Rcpt, Jrnl entries which are not invoices.
-  const lineRe = /([A-Z0-9][^\n]{22,32}?)\s{2,}(\d{2}-\d{2}-\d{4})\s+(Sale|OpBl)\s+(\S+)\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+[YN]\s+[\d\-]+\s+(-?\d+|-{1,4})/g;
-  let m;
-  while ((m = lineRe.exec(plain)) !== null) {
-    // Clean party names — page-total bleed-through adds leading digits/spaces
-    const party = m[1].trim().replace(/^[\d\s\-]+/, '').trim();
-    if (!party) continue;
+  const lines = plain.split('\n');
 
-    const [d, mo, y] = m[2].split('-');
-    const penAmt = parseFloat(m[6].replace(/,/g, '')) || 0;
-    if (penAmt <= 0) continue; // skip zero/negative balance rows
+  if (isSalesmanWise) {
+    // ── Salesman-wise Receivable ──────────────────────────────────────────────
+    // Fixed-width columns: space + 41-char party + refno + type + date + totalAmt + pendingAmt
+    const DATA_RE = /^ (.{41})(\S+)\s+(Sale|OpBl)\s+(\d{2}-\d{2}-\d{4})\s+[\d,]+\.\d{2}\s+([\d,]+\.\d{2})/;
+    let currentSp = null;
 
-    invoices.push({
-      invoiceNo:   m[4].trim(),
-      party:       party,
-      amount:      penAmt,
-      invoiceDate: `${y}-${mo.padStart(2,'0')}-${d.padStart(2,'0')}`,
-      salesperson: salesman || ''
-    });
+    for (const line of lines) {
+      const smMatch = line.match(/^\s*Salesman\s*:\s*(.+)/);
+      if (smMatch) {
+        currentSp = matchSalesman(smMatch[1]);
+        continue;
+      }
+      if (!currentSp) continue;
+
+      const m = DATA_RE.exec(line);
+      if (!m) continue;
+      const party = m[1].trim().replace(/^[\d\s\-]+/, '').trim();
+      if (!party) continue;
+      const penAmt = parseFloat(m[5].replace(/,/g, '')) || 0;
+      if (penAmt <= 0) continue;
+      const [d, mo, y] = m[4].split('-');
+      invoices.push({
+        invoiceNo:   m[2].trim(),
+        party:       party,
+        amount:      penAmt,
+        invoiceDate: `${y}-${mo.padStart(2,'0')}-${d.padStart(2,'0')}`,
+        salesperson: currentSp
+      });
+    }
+    return { salesman: 'ALL (Salesman-wise)', invoices };
+
+  } else {
+    // ── Bills Receivable (per-salesperson) ───────────────────────────────────
+    const smMatch = plain.match(/Salesman\s*[:\-]\s*([A-Za-z][A-Za-z\s]+?)\s{3,}/);
+    const salesman = smMatch ? matchSalesman(smMatch[1]) : null;
+
+    const DATA_RE = /([A-Z0-9][^\n]{22,32}?)\s{2,}(\S+)\s+(Sale|OpBl)\s+(\S+)\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+[YN]\s+[\d\-]+\s+(-?\d+|-{1,4})/g;
+    let m;
+    while ((m = DATA_RE.exec(plain)) !== null) {
+      const party = m[1].trim().replace(/^[\d\s\-]+/, '').trim();
+      if (!party) continue;
+      const penAmt = parseFloat(m[6].replace(/,/g, '')) || 0;
+      if (penAmt <= 0) continue;
+      const [d, mo, y] = m[4].split('-');
+      invoices.push({
+        invoiceNo:   m[2].trim(),
+        party:       party,
+        amount:      penAmt,
+        invoiceDate: `${y}-${mo.padStart(2,'0')}-${d.padStart(2,'0')}`,
+        salesperson: salesman || ''
+      });
+    }
+    return { salesman, invoices };
   }
-  return { salesman, invoices };
 }
 
 async function importHtml() {
@@ -406,13 +456,13 @@ async function importHtml() {
     return;
   }
 
-  const spLabel = salesman ? `for ${salesman}` : "(ALL — salesperson not tagged)";
-  showLoadingMsg("importMsg", `Importing ${invoices.length} invoices ${spLabel}...`);
+  const spLabel = salesman || "ALL (Salesman-wise)";
+  showLoadingMsg("importMsg", `Importing ${invoices.length} invoices (${spLabel})...`);
 
   try {
     const result = await apiPost({ action: "bulkAddInvoices", invoices });
     showResultMsg("importMsg",
-      `✓ Imported ${result.added} invoice(s) ${spLabel}. ${result.skipped} already on file (skipped by invoice number).`,
+      `✓ Imported ${result.added} invoice(s) (${spLabel}). ${result.skipped} already on file — skipped.`,
       true
     );
     fileInput.value = "";
