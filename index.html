@@ -107,9 +107,16 @@
   <!-- INVOICES TAB -->
   <section id="tab-invoices" class="hidden">
     <div class="card">
-      <h2>Import from BUSY (recommended)</h2>
-      <p class="muted-small">In BUSY, run <strong>Bills Receivable</strong> (Select Salesman: ALL, Type of Entries: Pending), export to <strong>HTML</strong>, then upload that file here. Already-imported invoices are skipped automatically by invoice number, so it's safe to re-import each month at salary calc time.</p>
-      <label for="htmlFile">BUSY export file (.html)</label>
+      <h2>Import from BUSY</h2>
+      <p class="muted-small">
+        <strong>Recommended (one file for everyone):</strong> In BUSY go to
+        Display → Outstanding Analysis → <strong>Salesman-wise Receivables</strong>,
+        set Branch: ALL, Type: Pending, then Export → HTML. Upload that one file here —
+        it imports all salespeople at once, each invoice tagged to the correct person automatically.<br><br>
+        <strong>Also supported:</strong> Individual Bills Receivable files filtered per salesperson (old method).
+        Already-imported invoices are skipped by invoice number, so re-importing monthly is safe.
+      </p>
+      <label for="htmlFile">BUSY export file (.html / .htm)</label>
       <input type="file" id="htmlFile" accept=".html,.htm">
       <div class="actions">
         <button class="primary" onclick="importHtml()">Import File</button>
